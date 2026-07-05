@@ -663,8 +663,9 @@
                 this.x = x; this.y = y;
                 this.width = 40; this.height = 50;
                 this.vx = 0; this.vy = 0;
-                this.speed = 0.36; this.maxSpeed = 4.4; // Giảm 20%
-                this.jumpForce = -16; this.gravity = 0.7;
+                this.speed = 0.36; this.maxSpeed = 4.4;
+                this.jumpForce = -16; this.gravity = 0.45; this.maxFall = 9;
+                this.airControl = 0.7;
                 this.friction = 0.88;
                 this.isGrounded = false;
                 this.hasJetpack = false; this.jetpackFuel = 300; this.maxJetpackFuel = 300; this.isJetpacking = false;
@@ -685,12 +686,13 @@
             
             update(keys, platforms, game) {
                 // Horizontal
+                const accel = this.isGrounded ? this.speed : this.speed * this.airControl;
                 if (keys.left) {
-                    this.vx -= this.speed * (this.hasSpeed ? 1.4 : 1);
+                    this.vx -= accel * (this.hasSpeed ? 1.4 : 1);
                     this.facingRight = false;
                 }
                 if (keys.right) {
-                    this.vx += this.speed * (this.hasSpeed ? 1.4 : 1);
+                    this.vx += accel * (this.hasSpeed ? 1.4 : 1);
                     this.facingRight = true;
                 }
                 
@@ -700,7 +702,7 @@
                 
                 // Gravity
                 this.vy += this.gravity;
-                if (this.vy > 18) this.vy = 18;
+                if (this.vy > this.maxFall) this.vy = this.maxFall;
                 
                 // Move
                 this.x += this.vx;
@@ -1182,14 +1184,15 @@
             constructor(x, y, type = 'patrol') {
                 this.x = x; this.y = y;
                 this.startX = x; this.startY = y;
-                this.width = 38; this.height = 38;
+                this.width = type === 'boss' ? 90 : 40;
+                this.height = type === 'boss' ? 110 : 50;
                 this.type = type;
                 this.moveRange = 140;
                 this.moveSpeed = 2;
                 this.moveDir = 1;
                 this.animFrame = 0; this.animTimer = 0;
                 this.alive = true;
-                this.health = type === 'boss' ? 5 : 1;
+                this.health = type === 'boss' ? 15 : (type === 'shooter' || type === 'chaser') ? 2 : 1;
                 this.maxHealth = this.health;
                 this.shootTimer = 0;
                 this.shootInterval = type === 'boss' ? 80 : 100;
@@ -1289,181 +1292,428 @@
             
             drawAlien(ctx, wobble) {
                 const isChaser = this.type === 'chaser';
-                
-                ctx.fillStyle = isChaser ? '#FF4444' : '#FF6B35';
+                const isShooter = this.type === 'shooter';
+                const armor = isChaser ? '#3a0a0a' : '#4a1515';
+                const trim = isChaser ? '#8B0000' : '#A52A2A';
+                const highlight = isChaser ? '#5a1010' : '#6a2020';
+
+                ctx.shadowBlur = 14;
+                ctx.shadowColor = '#ff1a1a';
+
+                // Backpack / pauldron (left shoulder)
+                ctx.fillStyle = '#1a1a1a';
+                ctx.strokeStyle = '#ff4444';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(-22, -8); ctx.lineTo(-12, -8);
+                ctx.lineTo(-10, 6); ctx.lineTo(-20, 6); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+                // Spike on pauldron
+                ctx.fillStyle = '#888';
+                ctx.beginPath();
+                ctx.moveTo(-16, -8); ctx.lineTo(-18, -16); ctx.lineTo(-14, -10); ctx.closePath();
+                ctx.fill();
+
+                // Main torso armor (Mark III Iron pattern)
+                const bodyGrad = ctx.createLinearGradient(-18, -5, 18, 20);
+                bodyGrad.addColorStop(0, highlight);
+                bodyGrad.addColorStop(0.5, armor);
+                bodyGrad.addColorStop(1, '#1a0505');
+                ctx.fillStyle = bodyGrad;
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(-16, -4); ctx.lineTo(16, -4);
+                ctx.lineTo(18, 18); ctx.lineTo(-18, 18); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+
+                // Chest plate center line
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(0, -2); ctx.lineTo(0, 16); ctx.stroke();
+
+                // Imperial aquila on chest
+                ctx.fillStyle = '#FFD700';
+                ctx.shadowBlur = 6;
+                ctx.shadowColor = '#FFD700';
+                ctx.beginPath();
+                ctx.moveTo(-6, 2); ctx.lineTo(-2, 6); ctx.lineTo(0, 4);
+                ctx.lineTo(2, 6); ctx.lineTo(6, 2);
+                ctx.lineTo(3, 8); ctx.lineTo(-3, 8); ctx.closePath();
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // Armor rivets
+                ctx.fillStyle = '#222';
+                for (const [rx, ry] of [[-13, -1], [13, -1], [-14, 14], [14, 14], [-15, 7], [15, 7]]) {
+                    ctx.beginPath();
+                    ctx.arc(rx, ry, 1.2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Helmet (Mark III style - aggressive visor)
+                const helmGrad = ctx.createLinearGradient(-15, -28, 15, -4);
+                helmGrad.addColorStop(0, armor);
+                helmGrad.addColorStop(0.6, highlight);
+                helmGrad.addColorStop(1, '#2a0808');
+                ctx.fillStyle = helmGrad;
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(-14, -10); ctx.lineTo(-12, -24);
+                ctx.lineTo(-8, -28); ctx.lineTo(8, -28);
+                ctx.lineTo(12, -24); ctx.lineTo(14, -10); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+
+                // Helmet crest (single fin)
+                ctx.fillStyle = '#FFD700';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, -28); ctx.lineTo(-2, -38);
+                ctx.lineTo(2, -38); ctx.lineTo(2, -28); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+
+                // Glowing red eye lenses
+                ctx.fillStyle = '#ff0000';
                 ctx.shadowBlur = 12;
-                ctx.shadowColor = isChaser ? '#FF4444' : '#FF6B35';
-                
-                // Body
-                ctx.beginPath();
-                ctx.ellipse(0, 5, 17, 14, 0, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Head
-                ctx.fillStyle = isChaser ? '#FF6666' : '#FF8855';
-                ctx.beginPath();
-                ctx.ellipse(0, -10, 14, 11, 0, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Eyes
-                ctx.fillStyle = '#fff';
-                ctx.beginPath();
-                ctx.ellipse(-5, -11, 5, 5, 0, 0, Math.PI * 2);
-                ctx.ellipse(5, -11, 5, 5, 0, 0, Math.PI * 2);
-                ctx.fill();
-                
+                ctx.shadowColor = '#ff0000';
+                ctx.fillRect(-10, -18, 7, 3);
+                ctx.fillRect(3, -18, 7, 3);
+                ctx.shadowBlur = 0;
+
+                // Eye glow trail
+                ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
+                ctx.fillRect(-11, -17, 9, 1);
+                ctx.fillRect(2, -17, 9, 1);
+
+                // Mouth grille (skull-like teeth)
                 ctx.fillStyle = '#000';
-                ctx.beginPath();
-                ctx.arc(-4 + this.moveDir * 2, -11, 2, 0, Math.PI * 2);
-                ctx.arc(6 + this.moveDir * 2, -11, 2, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Gun for shooter
-                if (this.type === 'shooter') {
+                ctx.fillRect(-7, -10, 14, 4);
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 0.8;
+                for (let i = -6; i <= 6; i += 3) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, -10); ctx.lineTo(i, -6); ctx.stroke();
+                }
+
+                // Bolter gun (if shooter)
+                if (isShooter) {
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 1.5;
+                    const gx = this.moveDir > 0 ? 14 : -28;
+                    ctx.beginPath();
+                    ctx.moveTo(gx, -1); ctx.lineTo(gx + 14, -1);
+                    ctx.lineTo(gx + 14, 6); ctx.lineTo(gx, 6); ctx.closePath();
+                    ctx.fill(); ctx.stroke();
+                    // Gun barrel
                     ctx.fillStyle = '#333';
-                    ctx.fillRect(this.moveDir > 0 ? 14 : -22, 0, 12, 7);
+                    ctx.fillRect(this.moveDir > 0 ? gx + 12 : gx - 4, 1, 6, 3);
+                    // Red muzzle trim
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(this.moveDir > 0 ? gx + 18 : gx - 6, 0, 2, 5);
                 }
-                
-                // Tentacles
-                ctx.strokeStyle = isChaser ? '#FF4444' : '#FF6B35';
-                ctx.lineWidth = 3.5;
-                ctx.lineCap = 'round';
-                for (let i = -1; i <= 1; i++) {
-                    ctx.beginPath();
-                    ctx.moveTo(i * 9, 17);
-                    ctx.quadraticCurveTo(i * 11 + wobble, 26, i * 7, 33);
-                    ctx.stroke();
+
+                // Chaser gets extra spikes on shoulders
+                if (isChaser) {
+                    ctx.fillStyle = '#aaa';
+                    for (const sx of [-20, 20]) {
+                        ctx.beginPath();
+                        ctx.moveTo(sx, -10); ctx.lineTo(sx + (sx < 0 ? -4 : 4), -18);
+                        ctx.lineTo(sx + (sx < 0 ? -2 : 2), -8); ctx.closePath();
+                        ctx.fill();
+                    }
                 }
-                
-                // Antenna
-                ctx.strokeStyle = isChaser ? '#FF6666' : '#FF8855';
+
+                // Legs (mecha-armored)
+                ctx.fillStyle = armor;
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1.5;
                 ctx.beginPath();
-                ctx.moveTo(-4, -19);
-                ctx.lineTo(-7, -28);
-                ctx.moveTo(4, -19);
-                ctx.lineTo(7, -28);
-                ctx.stroke();
-                
-                ctx.fillStyle = '#FFE66D';
+                ctx.moveTo(-10, 18); ctx.lineTo(-12, 32);
+                ctx.lineTo(-4, 32); ctx.lineTo(-4, 18); ctx.closePath();
+                ctx.fill(); ctx.stroke();
                 ctx.beginPath();
-                ctx.arc(-7, -28, 2.5, 0, Math.PI * 2);
-                ctx.arc(7, -28, 2.5, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.moveTo(4, 18); ctx.lineTo(4, 32);
+                ctx.lineTo(12, 32); ctx.lineTo(10, 18); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+
+                // Boot highlights
+                ctx.fillStyle = '#FFD700';
+                ctx.fillRect(-11, 30, 8, 1.5);
+                ctx.fillRect(3, 30, 8, 1.5);
             }
-            
+
             drawFloater(ctx, wobble) {
-                ctx.fillStyle = '#9B59B6';
+                // Heretic Astartes servobot - skull with crown
                 ctx.shadowBlur = 18;
-                ctx.shadowColor = '#9B59B6';
-                
+                ctx.shadowColor = '#8B0000';
+
+                // Crown of thorns / iron halo
+                ctx.strokeStyle = '#888';
+                ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.ellipse(0, 0, 18, 13, 0, Math.PI, 0);
-                ctx.fill();
-                
-                ctx.fillStyle = 'rgba(155, 89, 182, 0.7)';
-                ctx.beginPath();
-                ctx.ellipse(0, 0, 18, 18, 0, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Glow
-                const g = ctx.createRadialGradient(0, -4, 0, 0, 0, 12);
-                g.addColorStop(0, 'rgba(255,255,255,0.4)');
-                g.addColorStop(1, 'transparent');
-                ctx.fillStyle = g;
-                ctx.beginPath();
-                ctx.arc(0, -4, 9, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Tentacles
-                ctx.strokeStyle = '#9B59B6';
-                ctx.lineWidth = 2.5;
-                for (let i = -2; i <= 2; i++) {
+                ctx.arc(0, -4, 19, Math.PI * 0.1, Math.PI * 0.9);
+                ctx.stroke();
+                ctx.fillStyle = '#FFD700';
+                for (let i = 0; i < 5; i++) {
+                    const a = Math.PI * 0.15 + (i * Math.PI * 0.18);
                     ctx.beginPath();
-                    ctx.moveTo(i * 6, 14);
-                    const tw = Math.sin(Date.now() / 200 + i) * 4;
-                    ctx.quadraticCurveTo(i * 6 + tw, 28, i * 6, 42);
+                    ctx.moveTo(Math.cos(a) * 19, -4 + Math.sin(a) * 19);
+                    ctx.lineTo(Math.cos(a) * 24, -4 + Math.sin(a) * 24);
+                    ctx.lineTo(Math.cos(a - 0.1) * 19, -4 + Math.sin(a - 0.1) * 19);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+
+                // Skull base (iron-grey, weathered)
+                const skullGrad = ctx.createRadialGradient(0, -2, 2, 0, 0, 17);
+                skullGrad.addColorStop(0, '#c0c0c0');
+                skullGrad.addColorStop(0.7, '#5a5a5a');
+                skullGrad.addColorStop(1, '#1a1a1a');
+                ctx.fillStyle = skullGrad;
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, 16, 0, Math.PI * 2);
+                ctx.fill(); ctx.stroke();
+
+                // Jaw
+                ctx.fillStyle = '#4a4a4a';
+                ctx.beginPath();
+                ctx.moveTo(-10, 6); ctx.lineTo(10, 6);
+                ctx.lineTo(7, 16); ctx.lineTo(-7, 16); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+
+                // Teeth
+                ctx.fillStyle = '#e0e0c0';
+                for (let i = -6; i <= 6; i += 3) {
+                    ctx.fillRect(i, 8, 2, 4);
+                }
+
+                // Glowing daemon eyes (deep red, no pupils - chaos)
+                ctx.fillStyle = '#ff1a1a';
+                ctx.shadowBlur = 14;
+                ctx.shadowColor = '#ff0000';
+                ctx.beginPath();
+                ctx.ellipse(-5, -4, 3.5, 4.5, 0, 0, Math.PI * 2);
+                ctx.ellipse(5, -4, 3.5, 4.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Eye glow trail downward
+                ctx.fillStyle = 'rgba(255, 30, 30, 0.4)';
+                ctx.fillRect(-5, 0, 3, 6);
+                ctx.fillRect(2, 0, 3, 6);
+
+                // Dark servo-skirt (chains hanging)
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 1.5;
+                for (let i = -3; i <= 3; i++) {
+                    const swing = Math.sin(Date.now() / 300 + i * 0.5) * 3;
+                    ctx.beginPath();
+                    ctx.moveTo(i * 4, 16);
+                    ctx.quadraticCurveTo(i * 4 + swing, 26, i * 4 + swing * 1.5, 38);
                     ctx.stroke();
                 }
-                
-                // Eyes
-                ctx.fillStyle = '#fff';
-                ctx.beginPath();
-                ctx.arc(-6, -2, 3.5, 0, Math.PI * 2);
-                ctx.arc(6, -2, 3.5, 0, Math.PI * 2);
-                ctx.fill();
-                
-                ctx.fillStyle = '#000';
-                ctx.beginPath();
-                ctx.arc(-5, -2, 1.5, 0, Math.PI * 2);
-                ctx.arc(7, -2, 1.5, 0, Math.PI * 2);
-                ctx.fill();
+
+                // Chest rivets
+                ctx.fillStyle = '#222';
+                for (const [rx, ry] of [[-12, 8], [12, 8], [0, 12]]) {
+                    ctx.beginPath();
+                    ctx.arc(rx, ry, 1, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.shadowBlur = 0;
             }
             
             drawBoss(ctx, wobble) {
-                ctx.fillStyle = '#8B0000';
-                ctx.shadowBlur = 25;
-                ctx.shadowColor = '#FF0000';
-                
-                // Body
+                // Chaos Lord - massive armored daemon prince
+                ctx.shadowBlur = 28;
+                ctx.shadowColor = '#ff0000';
+
+                // Cape (dark flowing behind)
+                ctx.fillStyle = 'rgba(20, 0, 0, 0.85)';
+                ctx.strokeStyle = '#4a0000';
+                ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.ellipse(0, 10, 32, 28, 0, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Head
-                ctx.fillStyle = '#A52A2A';
-                ctx.beginPath();
-                ctx.ellipse(0, -12, 26, 20, 0, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Horns
-                ctx.fillStyle = '#FFE66D';
-                ctx.beginPath();
-                ctx.moveTo(-18, -26);
-                ctx.lineTo(-22, -46);
-                ctx.lineTo(-14, -32);
+                ctx.moveTo(-30, -8);
+                ctx.quadraticCurveTo(-45, 25, -30, 50);
+                ctx.lineTo(30, 50);
+                ctx.quadraticCurveTo(45, 25, 30, -8);
                 ctx.closePath();
-                ctx.fill();
-                
+                ctx.fill(); ctx.stroke();
+
+                // Massive pauldrons (shoulder armor)
+                const pauldronGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 16);
+                pauldronGrad.addColorStop(0, '#5a1010');
+                pauldronGrad.addColorStop(0.6, '#3a0808');
+                pauldronGrad.addColorStop(1, '#1a0202');
+                ctx.fillStyle = pauldronGrad;
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2.5;
+
+                // Left pauldron
                 ctx.beginPath();
-                ctx.moveTo(18, -26);
-                ctx.lineTo(22, -46);
-                ctx.lineTo(14, -32);
-                ctx.closePath();
-                ctx.fill();
-                
-                // Eyes
-                ctx.fillStyle = '#FF0000';
+                ctx.arc(-26, -10, 18, 0, Math.PI * 2);
+                ctx.fill(); ctx.stroke();
+                // Right pauldron
                 ctx.beginPath();
-                ctx.ellipse(-9, -15, 7, 9, 0, 0, Math.PI * 2);
-                ctx.ellipse(9, -15, 7, 9, 0, 0, Math.PI * 2);
-                ctx.fill();
-                
-                ctx.fillStyle = '#000';
-                ctx.beginPath();
-                ctx.arc(-7 + this.moveDir * 2, -15, 3.5, 0, Math.PI * 2);
-                ctx.arc(11 + this.moveDir * 2, -15, 3.5, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Mouth
+                ctx.arc(26, -10, 18, 0, Math.PI * 2);
+                ctx.fill(); ctx.stroke();
+
+                // Pauldron spikes
+                ctx.fillStyle = '#aaa';
+                for (const sx of [-38, -28, -18, 18, 28, 38]) {
+                    ctx.beginPath();
+                    ctx.moveTo(sx, -20); ctx.lineTo(sx + (sx < 0 ? -5 : 5), -34);
+                    ctx.lineTo(sx + (sx < 0 ? -2 : 2), -18); ctx.closePath();
+                    ctx.fill();
+                }
+
+                // Pauldron trim (gold)
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 1.5;
+                for (const sx of [-26, 26]) {
+                    ctx.beginPath();
+                    ctx.arc(sx, -10, 14, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                // Torso (Mark IV Maximus)
+                const torsoGrad = ctx.createLinearGradient(-22, -8, 22, 25);
+                torsoGrad.addColorStop(0, '#5a1010');
+                torsoGrad.addColorStop(0.4, '#3a0808');
+                torsoGrad.addColorStop(1, '#1a0202');
+                ctx.fillStyle = torsoGrad;
                 ctx.strokeStyle = '#000';
                 ctx.lineWidth = 2.5;
                 ctx.beginPath();
-                ctx.arc(0, -4, 10, 0.2, Math.PI - 0.2);
-                ctx.stroke();
-                
-                // Health bar
-                ctx.fillStyle = '#333';
-                ctx.fillRect(-28, -50, 56, 7);
-                ctx.fillStyle = '#FF0000';
-                ctx.fillRect(-28, -50, 56 * (this.health / this.maxHealth), 7);
-                
-                // Arms
+                ctx.moveTo(-20, -6); ctx.lineTo(20, -6);
+                ctx.lineTo(24, 24); ctx.lineTo(-24, 24); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+
+                // Chaos star on chest (8-pointed star)
                 ctx.fillStyle = '#8B0000';
-                ctx.fillRect(-42, 0, 14, 22);
-                ctx.fillRect(28, 0, 14, 22);
-                
-                ctx.fillStyle = '#333';
-                ctx.fillRect(this.moveDir > 0 ? 38 : -52, 4, 18, 9);
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                for (let i = 0; i < 8; i++) {
+                    const a = (i * Math.PI / 4) - Math.PI / 2;
+                    const r = i % 2 === 0 ? 12 : 5;
+                    const x = Math.cos(a) * r;
+                    const y = Math.sin(a) * r;
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                }
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+
+                // Center eye of chaos (glowing)
+                ctx.fillStyle = '#ff0000';
+                ctx.shadowBlur = 14;
+                ctx.shadowColor = '#ff0000';
+                ctx.beginPath();
+                ctx.arc(0, 8, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Armor rivets
+                ctx.fillStyle = '#0a0a0a';
+                for (const [rx, ry] of [[-18, -2], [18, -2], [-19, 20], [19, 20], [-12, 8], [12, 8]]) {
+                    ctx.beginPath();
+                    ctx.arc(rx, ry, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Helmet (chaos pattern - aggressive horns)
+                const helmGrad = ctx.createLinearGradient(-18, -38, 18, -6);
+                helmGrad.addColorStop(0, '#3a0808');
+                helmGrad.addColorStop(0.5, '#5a1010');
+                helmGrad.addColorStop(1, '#2a0606');
+                ctx.fillStyle = helmGrad;
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(-18, -10); ctx.lineTo(-14, -30);
+                ctx.lineTo(-8, -38); ctx.lineTo(8, -38);
+                ctx.lineTo(14, -30); ctx.lineTo(18, -10); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+
+                // Horns (curved, massive)
+                ctx.fillStyle = '#c0c0c0';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(-12, -32); ctx.quadraticCurveTo(-22, -48, -28, -56);
+                ctx.lineTo(-24, -56); ctx.quadraticCurveTo(-18, -44, -8, -30);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(12, -32); ctx.quadraticCurveTo(22, -48, 28, -56);
+                ctx.lineTo(24, -56); ctx.quadraticCurveTo(18, -44, 8, -30);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+
+                // Helmet crown ridge
+                ctx.fillStyle = '#FFD700';
+                ctx.fillRect(-3, -36, 6, 8);
+
+                // Visor (single glowing eye slit)
+                ctx.fillStyle = '#ff0000';
+                ctx.shadowBlur = 16;
+                ctx.shadowColor = '#ff0000';
+                ctx.fillRect(-14, -22, 28, 3);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(255, 30, 30, 0.4)';
+                ctx.fillRect(-15, -21, 30, 1);
+
+                // Mouth grille
+                ctx.fillStyle = '#000';
+                ctx.fillRect(-10, -14, 20, 5);
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 0.8;
+                for (let i = -8; i <= 8; i += 3) {
+                    ctx.beginPath();
+                    ctx.moveTo(i, -14); ctx.lineTo(i, -9); ctx.stroke();
+                }
+
+                // Weapon arm (massive chainaxe / power claw)
+                ctx.fillStyle = '#1a1a1a';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                const ax = this.moveDir > 0 ? 38 : -52;
+                ctx.beginPath();
+                ctx.moveTo(ax, -2); ctx.lineTo(ax + 14, -4);
+                ctx.lineTo(ax + 14, 12); ctx.lineTo(ax, 10); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+                // Teeth on chainaxe
+                ctx.fillStyle = '#aaa';
+                for (let i = 0; i < 4; i++) {
+                    const tx = ax + 2 + i * 3;
+                    ctx.beginPath();
+                    ctx.moveTo(tx, 0); ctx.lineTo(tx + 1.5, -5); ctx.lineTo(tx + 3, 0); ctx.closePath();
+                    ctx.fill();
+                }
+                // Glow from axe
+                ctx.fillStyle = 'rgba(255, 50, 50, 0.5)';
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = '#ff0000';
+                ctx.fillRect(this.moveDir > 0 ? ax + 12 : ax - 2, -6, 4, 16);
+
+                // Health bar (imperial style)
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(-40, -68, 80, 8);
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(-40, -68, 80, 8);
+                ctx.fillStyle = '#8B0000';
+                ctx.fillRect(-39, -67, 78 * (this.health / this.maxHealth), 6);
+
+                // Skull icons flanking health bar
+                ctx.fillStyle = '#aaa';
+                ctx.font = '8px serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('☠', -44, -61);
+                ctx.fillText('☠', 44, -61);
+
+                ctx.shadowBlur = 0;
             }
             
             checkCollision(player) {
