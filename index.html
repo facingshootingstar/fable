@@ -288,7 +288,7 @@
                 <h2 class="title" style="font-size: 28px;">HƯỚNG DẪN</h2>
                 <div style="color: white; text-align: left; line-height: 2; margin: 20px 0; font-size: 14px;">
                     <p>🎮 <strong style="color: #00D4FF;">Di chuyển:</strong> A/D hoặc ←/→</p>
-                    <p>🚀 <strong style="color: #00D4FF;">Nhảy:</strong> W hoặc SPACE (nhảy 2 lần!)</p>
+                    <p>🚀 <strong style="color: #00D4FF;">Jetpack:</strong> W hoặc SPACE (giữ để bay, nhiên liệu giới hạn)</p>
                     <p>🔫 <strong style="color: #00FF88;">Bắn súng:</strong> J</p>
                     <p>⏸️ <strong style="color: #FFE66D;">Tạm dừng:</strong> P</p>
                     <p style="margin-top: 15px;">💎 <strong style="color: #00FFFF;">POWER-UPS:</strong></p>
@@ -663,11 +663,11 @@
                 this.x = x; this.y = y;
                 this.width = 40; this.height = 50;
                 this.vx = 0; this.vy = 0;
-                this.speed = 0.45; this.maxSpeed = 5.5; // Giảm 30%
+                this.speed = 0.36; this.maxSpeed = 4.4; // Giảm 20%
                 this.jumpForce = -16; this.gravity = 0.7;
                 this.friction = 0.88;
                 this.isGrounded = false;
-                this.jumpsLeft = 2; this.maxJumps = 2;
+                this.hasJetpack = false; this.jetpackFuel = 300; this.maxJetpackFuel = 300; this.isJetpacking = false;
                 this.isInvincible = false;
                 this.invincibleTimer = 0;
                 this.facingRight = true;
@@ -732,7 +732,8 @@
                             this.y = plat.y - this.height;
                             this.vy = 0;
                             this.isGrounded = true;
-                            this.jumpsLeft = this.maxJumps;
+                            this.hasJetpack = true;
+                            this.jetpackFuel = this.maxJetpackFuel;
                             
                             if (plat.type === 'moving' && plat.moveAxis === 'x') {
                                 this.x += plat.velocityX;
@@ -795,14 +796,19 @@
                 return null;
             }
             
-            jump() {
-                if (this.jumpsLeft > 0) {
-                    this.vy = this.jumpForce;
-                    this.jumpsLeft--;
-                    this.isGrounded = false;
-                    return true;
+            jetpack(on) {
+                if (on) {
+                    if (this.jetpackFuel > 0 && this.hasJetpack) {
+                        this.vy = Math.max(this.vy - 0.4, -8);
+                        this.isJetpacking = true;
+                        this.jetpackFuel--;
+                        return true;
+                    }
+                    return false;
+                } else {
+                    this.isJetpacking = false;
+                    return false;
                 }
-                return false;
             }
             
             shoot(game) {
@@ -948,8 +954,40 @@
                 ctx.fill();
                 ctx.stroke();
                 
-                // Jetpack flame
-                if (!this.isGrounded && this.vy < 0) {
+                // Jetpack flame (bigger & dynamic when actively jetpacking)
+                if (this.isJetpacking && this.jetpackFuel > 0) {
+                    // Left jetpack (x+2 to x+8)
+                    const lLen = 10 + Math.random() * 15;
+                    const lGrad = ctx.createLinearGradient(x+5, y+48, x+5, y+48+lLen);
+                    lGrad.addColorStop(0, '#FFE66D');
+                    lGrad.addColorStop(0.4, '#FF6B35');
+                    lGrad.addColorStop(1, 'transparent');
+                    ctx.fillStyle = lGrad;
+                    ctx.shadowBlur = 14;
+                    ctx.shadowColor = '#FF6B35';
+                    ctx.beginPath();
+                    ctx.moveTo(x+2, y+48);
+                    ctx.lineTo(x+8, y+48);
+                    ctx.lineTo(x+5, y+48+lLen);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Right jetpack (x+30 to x+36)
+                    const rLen = 10 + Math.random() * 15;
+                    const rGrad = ctx.createLinearGradient(x+33, y+48, x+33, y+48+rLen);
+                    rGrad.addColorStop(0, '#FFE66D');
+                    rGrad.addColorStop(0.4, '#FF6B35');
+                    rGrad.addColorStop(1, 'transparent');
+                    ctx.fillStyle = rGrad;
+                    ctx.beginPath();
+                    ctx.moveTo(x+30, y+48);
+                    ctx.lineTo(x+36, y+48);
+                    ctx.lineTo(x+33, y+48+rLen);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                } else if (!this.isGrounded && this.vy < 0) {
+                    // Small idle flame when rising without jetpack
                     const fGrad = ctx.createLinearGradient(x+5, y+48, x+5, y+65);
                     fGrad.addColorStop(0, '#FFE66D');
                     fGrad.addColorStop(0.5, '#FF6B35');
@@ -1526,17 +1564,22 @@
                 this.particles = new ParticleSystem();
                 this.playerBullets = [];
                 this.enemyBullets = [];
-                
+
                 this.keys = { left: false, right: false, jump: false, shoot: false };
                 this.jumpPressed = false;
                 this.shootPressed = false;
-                
+
                 this.screenShake = 0;
                 this.starfield = this.createStarfield();
                 this.time = 0;
-                
+
                 this.cameraX = 0;
                 this.levelWidth = 2800;
+
+                // Space environment
+                this.meteors = [];
+                this.shootingStars = [];
+                this.createSpaceEnvironment();
                 
                 // Stats
                 this.kills = 0;
@@ -1561,6 +1604,128 @@
                     });
                 }
                 return stars;
+            }
+
+            createSpaceEnvironment() {
+                // Meteors drifting in the level
+                const meteorColors = ['#555', '#777', '#888', '#444', '#666', '#5A5A5A'];
+                for (let i = 0; i < 15; i++) {
+                    this.meteors.push({
+                        x: Math.random() * this.levelWidth,
+                        y: Math.random() * this.canvas.height * 0.7,
+                        vx: (Math.random() - 0.5) * 1.0,
+                        vy: 0.2 + Math.random() * 0.6,
+                        radius: 8 + Math.random() * 17,
+                        rotation: Math.random() * Math.PI * 2,
+                        rotationSpeed: (Math.random() - 0.5) * 0.04,
+                        color: meteorColors[Math.floor(Math.random() * meteorColors.length)],
+                        hasTrail: Math.random() > 0.5
+                    });
+                }
+
+                // Shooting stars streaking leftward
+                for (let i = 0; i < 25; i++) {
+                    this.shootingStars.push({
+                        x: Math.random() * this.levelWidth * 1.5,
+                        y: Math.random() * this.canvas.height,
+                        vx: -3 - Math.random() * 4,
+                        length: 20 + Math.random() * 30,
+                        brightness: 0.5 + Math.random() * 0.5,
+                        timer: Math.random() * 200
+                    });
+                }
+            }
+
+            updateSpaceEnvironment() {
+                // Meteors: drift down + sideways; wrap around the level
+                for (const m of this.meteors) {
+                    m.x += m.vx;
+                    m.y += m.vy;
+                    m.rotation += m.rotationSpeed;
+                    if (m.y - m.radius > this.canvas.height) {
+                        m.y = -m.radius;
+                        m.x = Math.random() * this.levelWidth;
+                    }
+                    if (m.x < -m.radius * 2) m.x = this.levelWidth + m.radius;
+                    if (m.x > this.levelWidth + m.radius * 2) m.x = -m.radius;
+                }
+
+                // Shooting stars: move left, respawn on the right
+                for (const s of this.shootingStars) {
+                    s.x += s.vx;
+                    s.timer++;
+                    if (s.x + s.length < 0 || s.timer > 400) {
+                        s.x = this.levelWidth * 1.2 + Math.random() * this.levelWidth * 0.5;
+                        s.y = Math.random() * this.canvas.height;
+                        s.timer = 0;
+                    }
+                }
+            }
+
+            drawSpaceEnvironment(ctx) {
+                // Meteors (parallax 0.3)
+                for (const m of this.meteors) {
+                    const px = m.x - this.cameraX * 0.3;
+                    const py = m.y;
+                    ctx.save();
+                    ctx.translate(px, py);
+                    ctx.rotate(m.rotation);
+                    // Rock body
+                    ctx.fillStyle = m.color;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, m.radius, m.radius * 0.85, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    // Shading
+                    const shade = ctx.createRadialGradient(-m.radius * 0.3, -m.radius * 0.3, 0, 0, 0, m.radius);
+                    shade.addColorStop(0, 'rgba(255,255,255,0.18)');
+                    shade.addColorStop(1, 'rgba(0,0,0,0.45)');
+                    ctx.fillStyle = shade;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, m.radius, m.radius * 0.85, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+
+                    // Optional trail (drawn in world space, not rotated)
+                    if (m.hasTrail) {
+                        ctx.save();
+                        ctx.strokeStyle = m.color;
+                        ctx.globalAlpha = 0.35;
+                        ctx.lineWidth = Math.max(2, m.radius * 0.25);
+                        ctx.beginPath();
+                        ctx.moveTo(px, py);
+                        ctx.lineTo(px - m.vx * 18, py - m.vy * 18);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+
+                // Shooting stars (parallax 0.6) — bright streak with glow
+                ctx.save();
+                for (const s of this.shootingStars) {
+                    const px = s.x - this.cameraX * 0.6;
+                    const py = s.y;
+                    if (px > this.canvas.width + s.length || px < -s.length * 2) continue;
+                    const grad = ctx.createLinearGradient(px, py, px + s.length, py);
+                    grad.addColorStop(0, `rgba(255, 255, 255, ${s.brightness})`);
+                    grad.addColorStop(0.5, `rgba(255, 230, 109, ${s.brightness * 0.8})`);
+                    grad.addColorStop(1, 'rgba(255, 230, 109, 0)');
+                    ctx.strokeStyle = grad;
+                    ctx.lineWidth = 2;
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = '#FFE66D';
+                    ctx.beginPath();
+                    ctx.moveTo(px, py);
+                    ctx.lineTo(px + s.length, py);
+                    ctx.stroke();
+
+                    // Bright head
+                    ctx.shadowBlur = 10;
+                    ctx.fillStyle = `rgba(255, 255, 255, ${s.brightness})`;
+                    ctx.beginPath();
+                    ctx.arc(px, py, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
             }
             
             setupControls() {
@@ -1934,15 +2099,14 @@
                     if (this.comboTimer === 0) this.combo = 0;
                 }
                 
-                // Jump
-                if (this.keys.jump && this.player.jump()) {
-                    AudioManager.play('jump');
-                    this.particles.emit(
-                        this.player.x + this.player.width/2,
-                        this.player.y + this.player.height,
-                        '#00D4FF', 8
-                    );
-                    this.keys.jump = false;
+                // Jump / Jetpack
+                if (this.keys.jump) {
+                    if (this.player.jetpack(true)) {
+                        AudioManager.play('jump');
+                        this.particles.emit(this.player.x + this.player.width/2, this.player.y + this.player.height, '#00D4FF', 6);
+                    }
+                } else {
+                    this.player.jetpack(false);
                 }
                 
                 // Shoot
@@ -2055,9 +2219,12 @@
                     return true;
                 });
                 
-                // Particles
+// Particles
                 this.particles.update();
-                
+
+                // Space environment (meteors, shooting stars)
+                this.updateSpaceEnvironment();
+
                 if (this.screenShake > 0) this.screenShake *= 0.9;
                 
                 if (this.checkLevelComplete()) {
@@ -2159,6 +2326,34 @@
                 nebula.addColorStop(1, 'transparent');
                 ctx.fillStyle = nebula;
                 ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // Extra nebula clouds (pink + teal) for depth
+                const nebulaA = ctx.createRadialGradient(
+                    this.canvas.width * 0.25 - this.cameraX * 0.1,
+                    this.canvas.height * 0.35, 0,
+                    this.canvas.width * 0.25 - this.cameraX * 0.1,
+                    this.canvas.height * 0.35, 260
+                );
+                nebulaA.addColorStop(0, 'rgba(255, 107, 182, 0.10)');
+                nebulaA.addColorStop(0.6, 'rgba(255, 107, 182, 0.04)');
+                nebulaA.addColorStop(1, 'transparent');
+                ctx.fillStyle = nebulaA;
+                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                const nebulaB = ctx.createRadialGradient(
+                    this.canvas.width * 0.75 - this.cameraX * 0.2,
+                    this.canvas.height * 0.65, 0,
+                    this.canvas.width * 0.75 - this.cameraX * 0.2,
+                    this.canvas.height * 0.65, 300
+                );
+                nebulaB.addColorStop(0, 'rgba(0, 255, 200, 0.08)');
+                nebulaB.addColorStop(0.6, 'rgba(0, 255, 200, 0.03)');
+                nebulaB.addColorStop(1, 'transparent');
+                ctx.fillStyle = nebulaB;
+                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // Meteors and shooting stars (parallax)
+                this.drawSpaceEnvironment(ctx);
                 
                 if (this.state === 'playing' || this.state === 'paused') {
                     ctx.save();
@@ -2238,6 +2433,19 @@
                     ctx.fillText(`🔥 ${Math.ceil(this.player.rapidFireTimer / 60)}s`, 18, indicatorY);
                 }
                 
+                // Jetpack fuel bar (bottom-left)
+                if (this.player.hasJetpack && this.player.jetpackFuel < this.player.maxJetpackFuel) {
+                    const barW = 100, barH = 8;
+                    const barX = 18, barY = this.canvas.height - 50;
+                    ctx.fillStyle = '#333';
+                    ctx.fillRect(barX, barY, barW, barH);
+                    const fuelPct = this.player.jetpackFuel / this.player.maxJetpackFuel;
+                    ctx.fillStyle = fuelPct > 0.3 ? '#00D4FF' : '#FF4444';
+                    ctx.fillRect(barX, barY, barW * fuelPct, barH);
+                    ctx.strokeStyle = '#fff';
+                    ctx.strokeRect(barX, barY, barW, barH);
+                }
+
                 // Kill counter
                 ctx.textAlign = 'right';
                 ctx.fillStyle = '#ff6b6b';
