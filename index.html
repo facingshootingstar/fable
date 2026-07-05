@@ -289,15 +289,17 @@
                 <div style="color: white; text-align: left; line-height: 2; margin: 20px 0; font-size: 14px;">
                     <p>🎮 <strong style="color: #00D4FF;">Di chuyển:</strong> A/D hoặc ←/→</p>
                     <p>🚀 <strong style="color: #00D4FF;">Jetpack:</strong> W hoặc SPACE (giữ để bay, nhiên liệu giới hạn)</p>
-                    <p>🔫 <strong style="color: #00FF88;">Bắn súng:</strong> J</p>
+                    <p>🔫 <strong style="color: #00FF88;">Bắn súng:</strong> J (tốn đạn)</p>
+                    <p>⚔️ <strong style="color: #FFD700;">Cận chiến:</strong> K hoặc Shift (không giới hạn)</p>
                     <p>⏸️ <strong style="color: #FFE66D;">Tạm dừng:</strong> P</p>
                     <p style="margin-top: 15px;">💎 <strong style="color: #00FFFF;">POWER-UPS:</strong></p>
                     <p>🛡️ <strong style="color: #00FFFF;">Shield:</strong> Bất tử 5 giây</p>
                     <p>⚡ <strong style="color: #FFE66D;">Speed:</strong> Di chuyển nhanh hơn</p>
                     <p>🔥 <strong style="color: #FF4444;">Rapid Fire:</strong> Bắn liên tục</p>
-                    <p style="margin-top: 15px;">👾 <strong style="color: #FF6B35;">ĐIỂM:</strong></p>
-                    <p>⭐ Ngôi sao: +100 | 🪐 Hành tinh: +500</p>
-                    <p>💀 Tiêu diệt: +300 | 🔥 Combo x2: +600</p>
+                    <p style="margin-top: 15px;">⚔️ <strong style="color: #FF6B35;">MỤC TIÊU:</strong></p>
+                    <p>📦 <strong style="color: #FFE66D;">Ammo:</strong> Thùng đạn bổ sung</p>
+                    <p>❤️ <strong style="color: #FF4444;">Health Orb:</strong> Hồi máu</p>
+                    <p>☠️ Tiêu diệt quân đoàn Chaos, sống sót tới cuối màn</p>
                 </div>
                 <button class="btn" onclick="game.hideHowToPlay()">QUAY LẠI</button>
             </div>
@@ -600,17 +602,29 @@
         class Bullet {
             constructor(x, y, dir, isPlayer = true) {
                 this.x = x; this.y = y;
-                this.w = isPlayer ? 18 : 12;
+                this.w = isPlayer ? 18 : 14;
                 this.h = isPlayer ? 5 : 5;
-                this.speed = isPlayer ? 14 : 7;
+                this.speed = isPlayer ? 14 : 6;
                 this.dir = dir;
                 this.isPlayer = isPlayer;
                 this.alive = true;
+                this.arc = 0;  // for spread/warp projectile angles
+                this.lifetime = isPlayer ? 60 : 120;
+                this.warp = false;
             }
-            
+
             update() {
-                this.x += this.speed * this.dir;
-                return this.x > -50 && this.x < 5000;
+                if (this.arc && Math.abs(this.arc) > 0.5) {
+                    // Vertical move (down shot from boss)
+                    if (Math.abs(this.arc) > 3) {
+                        this.y += this.speed;
+                    }
+                } else {
+                    this.x += this.speed * this.dir;
+                    if (this.arc) this.y += this.arc * this.speed;
+                }
+                this.lifetime--;
+                return this.x > -50 && this.x < 5000 && this.lifetime > 0 && this.y < 700;
             }
             
             draw(ctx) {
@@ -618,30 +632,28 @@
                 const cx = this.x + (this.isPlayer ? 0 : this.w/2);
                 const cy = this.y + this.h/2;
 
+                const baseColor = this.isPlayer ? '#00FF88' :
+                    (this.arc && Math.abs(this.arc) > 3) ? '#aa44ff' :
+                    this.warp ? '#bb66ff' : '#FF4444';
+
                 // Trail
                 ctx.shadowBlur = 18;
-                ctx.shadowColor = this.isPlayer ? '#00FF88' : '#FF4444';
+                ctx.shadowColor = baseColor;
                 const grad = ctx.createLinearGradient(
                     cx - (this.isPlayer ? 0 : 30),
                     cy,
                     cx + (this.isPlayer ? 30 : 0),
                     cy
                 );
-                if (this.isPlayer) {
-                    grad.addColorStop(0, 'rgba(0, 255, 136, 0)');
-                    grad.addColorStop(0.3, 'rgba(0, 255, 136, 0.8)');
-                    grad.addColorStop(1, '#FFFFFF');
-                } else {
-                    grad.addColorStop(0, '#FFFFFF');
-                    grad.addColorStop(0.7, 'rgba(255, 68, 68, 0.8)');
-                    grad.addColorStop(1, 'rgba(255, 68, 68, 0)');
-                }
+                grad.addColorStop(0, this.isPlayer ? 'rgba(0, 255, 136, 0)' : `${baseColor}00`);
+                grad.addColorStop(0.3, this.isPlayer ? 'rgba(0, 255, 136, 0.8)' : `${baseColor}cc`);
+                grad.addColorStop(1, '#FFFFFF');
                 ctx.fillStyle = grad;
-                ctx.fillRect(cx - (this.isPlayer ? 0 : 25), cy - 1.5, this.isPlayer ? 25 : 25, 3);
+                const trailLen = this.isPlayer ? 25 : 22;
+                ctx.fillRect(cx - (this.isPlayer ? 0 : trailLen), cy - 1.5, trailLen, 3);
 
                 // Core (white-hot)
                 ctx.shadowBlur = 14;
-                ctx.shadowColor = this.isPlayer ? '#00FF88' : '#FF4444';
                 ctx.fillStyle = '#FFFFFF';
                 ctx.beginPath();
                 ctx.arc(cx, cy, 2, 0, Math.PI * 2);
@@ -796,8 +808,17 @@
                 this.invincibleTimer = 0;
                 this.facingRight = true;
                 this.animFrame = 0; this.animTimer = 0;
-                this.shootCooldown = 0; this.maxShootCooldown = 12;
-                
+                this.shootCooldown = 0; this.maxShootCooldown = 16;
+
+                // Combat: HP + Ammo + Melee
+                this.maxHP = 6;
+                this.hp = this.maxHP;
+                this.maxAmmo = 12;
+                this.ammo = this.maxAmmo;
+                this.meleeCooldown = 0; this.meleeCooldownMax = 28;
+                this.meleeActive = 0;       // frames left in attack animation
+                this.meleeHit = false;      // already hit an enemy this swing?
+
                 // Power-ups
                 this.hasShield = false;
                 this.shieldTimer = 0;
@@ -902,25 +923,30 @@
                     this.rapidFireTimer--;
                     if (this.rapidFireTimer <= 0) this.hasRapidFire = false;
                 }
-                
+
                 if (this.shootCooldown > 0) this.shootCooldown--;
-                
+                if (this.meleeCooldown > 0) this.meleeCooldown--;
+                if (this.meleeActive > 0) {
+                    this.meleeActive--;
+                    if (this.meleeActive === 0) this.meleeHit = false;
+                }
+
                 // Animation
                 this.animTimer++;
                 if (this.animTimer > 7) {
                     this.animTimer = 0;
                     this.animFrame = (this.animFrame + 1) % 4;
                 }
-                
+
                 // Trail
                 if (Math.abs(this.vx) > 0.5 || Math.abs(this.vy) > 0.5) {
                     const trailColor = this.hasSpeed ? '#FFE66D' : (this.facingRight ? '#00D4FF' : '#FF6B35');
                     game.particles.emitTrail(this.x + this.width/2, this.y + this.height/2, trailColor);
                 }
-                
+
                 return null;
             }
-            
+
             jetpack(on) {
                 if (on && this.jetpackFuel > 0 && this.hasJetpack) {
                     this.vy -= 1.5;
@@ -932,19 +958,38 @@
                 this.isJetpacking = false;
                 return false;
             }
-            
+
             shoot(game) {
+                // Cannot shoot without ammo
+                if (this.ammo <= 0) return false;
                 const cooldown = this.hasRapidFire ? 4 : this.maxShootCooldown;
                 if (this.shootCooldown <= 0) {
                     this.shootCooldown = cooldown;
+                    this.ammo--;
                     const bx = this.facingRight ? this.x + this.width : this.x - 16;
                     const by = this.y + this.height/2 - 2;
                     game.playerBullets.push(new Bullet(bx, by, this.facingRight ? 1 : -1, true));
                     AudioManager.play('shoot');
-                    game.particles.emit(bx + (this.facingRight ? 8 : -8), by, '#00FF88', 4);
+                    game.particles.emitSparks(bx + (this.facingRight ? 8 : -8), by, '#00FF88', 4, this.facingRight ? 1 : -1);
+                    // Audio feedback when running out
+                    if (this.ammo === 0) {
+                        game.particles.emit(this.x + this.width/2, this.y + this.height/2, '#FF6666', 8);
+                    }
+                    return true;
                 }
+                return false;
             }
-            
+
+            melee(game) {
+                if (this.meleeCooldown > 0 || this.meleeActive > 0) return false;
+                this.meleeActive = 18;       // 18 frames swing animation
+                this.meleeCooldown = this.meleeCooldownMax;
+                this.meleeHit = false;
+                AudioManager.play('shoot');
+                game.particles.emitSparks(this.x + this.width/2, this.y + this.height/2, '#FFD700', 8, this.facingRight ? 1 : -1);
+                return true;
+            }
+
             applyPowerUp(type) {
                 switch(type) {
                     case 'shield':
@@ -959,6 +1004,12 @@
                         this.hasRapidFire = true;
                         this.rapidFireTimer = 300;
                         break;
+                    case 'health':
+                        this.hp = Math.min(this.hp + 2, this.maxHP);
+                        break;
+                    case 'ammo':
+                        this.ammo = Math.min(this.ammo + 4, this.maxAmmo);
+                        break;
                 }
             }
             
@@ -970,20 +1021,26 @@
             }
             
             hit(game) {
-                if (this.isInvincible || this.hasShield) {
-                    if (this.hasShield) {
-                        game.particles.emit(this.x + this.width/2, this.y + this.height/2, '#00FFFF', 20);
-                    }
+                if (this.isInvincible) {
                     return false;
                 }
-                
-                game.lives--;
+                if (this.hasShield) {
+                    game.particles.emit(this.x + this.width/2, this.y + this.height/2, '#00FFFF', 20);
+                    game.particles.emitShockwave(this.x + this.width/2, this.y + this.height/2, '#00FFFF', 8);
+                    return false;
+                }
+                this.hp--;
                 this.isInvincible = true;
-                this.invincibleTimer = 90;
-                game.particles.emit(this.x + this.width/2, this.y + this.height/2, '#FF6B35', 25);
-                game.screenShake = 12;
-                
-                return game.lives <= 0;
+                this.invincibleTimer = 70;
+                game.particles.emitSparks(this.x + this.width/2, this.y + this.height/2, '#FF2222', 14, -1);
+                game.particles.emit(this.x + this.width/2, this.y + this.height/2, '#FF6B35', 18);
+                game.screenShake = 10;
+                if (this.hp <= 0) {
+                    game.particles.emitExplosion(this.x + this.width/2, this.y + this.height/2, '#FF2200', 35);
+                    game.particles.emitSmoke(this.x + this.width/2, this.y + this.height/2, 8);
+                    game.screenShake = 22;
+                }
+                return this.hp <= 0;
             }
             
             draw(ctx) {
@@ -1334,88 +1391,179 @@
                     drawY += Math.sin(time / 500 + this.floatOffset) * 5;
                 }
 
-                const grad = ctx.createLinearGradient(this.x, drawY, this.x, drawY + this.height);
-
-                let mainColor, edgeColor, accentColor;
+                let mainColor, accentColor, topAccent;
                 switch(this.type) {
-                    case 'static':   mainColor='#6B4FCF'; edgeColor='#3a2570'; accentColor='#FFD700'; break;
-                    case 'moving':   mainColor='#00D4FF'; edgeColor='#006680'; accentColor='#fff';    break;
+                    case 'static':   mainColor='#5C3A2E'; accentColor='#C9A87A'; topAccent='#FFE66D'; break;
+                    case 'moving':   mainColor='#1F3A5C'; accentColor='#7099C2'; topAccent='#88E0FF'; break;
                     case 'bouncy':
-                        mainColor='#00FF88'; edgeColor='#008844'; accentColor='#FFE66D';
+                        mainColor='#1F5C3A'; accentColor='#7AC29A'; topAccent='#AAFF88';
                         ctx.translate(0, Math.sin(this.bouncePhase) * 3);
                         break;
-                    case 'floating': mainColor='#FF6B35'; edgeColor='#993300'; accentColor='#FFE66D'; break;
-                    default:         mainColor='#8B5CF6'; edgeColor='#6B4FCF'; accentColor='#FFD700';
+                    case 'floating': mainColor='#5C2E1F'; accentColor='#C28C7A'; topAccent='#FF8866'; break;
+                    default:         mainColor='#3A2E5C'; accentColor='#A87AC2'; topAccent='#DDAAFF';
                 }
 
+                // Outer dark drop shadow (Blasphemous: heavy outlines)
+                const shadowY = drawY + 3;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(this.x, shadowY, this.width, this.height);
+
+                // Main body with stone gradient
+                const grad = ctx.createLinearGradient(this.x, drawY, this.x, drawY + this.height);
                 grad.addColorStop(0, mainColor);
-                grad.addColorStop(0.5, edgeColor);
-                grad.addColorStop(1, '#000');
+                grad.addColorStop(0.5, '#2A1F1A');
+                grad.addColorStop(1, '#0A0807');
                 ctx.fillStyle = grad;
-                ctx.shadowBlur = 12;
-                ctx.shadowColor = mainColor;
-
+                ctx.shadowBlur = 6;
+                ctx.shadowColor = topAccent;
                 ctx.beginPath();
-                ctx.roundRect(this.x, drawY, this.width, this.height, 4);
+                ctx.rect(this.x, drawY, this.width, this.height);
                 ctx.fill();
+                ctx.shadowBlur = 0;
 
-                // Top edge highlight (like polished stone)
-                const topGrad = ctx.createLinearGradient(this.x, drawY, this.x, drawY + 5);
-                topGrad.addColorStop(0, accentColor + 'cc');
-                topGrad.addColorStop(1, accentColor + '00');
-                ctx.fillStyle = topGrad;
-                ctx.fillRect(this.x, drawY, this.width, 5);
+                // Heavy black outer outline
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(this.x - 1, drawY - 1, this.width + 2, this.height + 2);
 
-                // Bottom shadow bevel
-                ctx.fillStyle = 'rgba(0,0,0,0.5)';
-                ctx.fillRect(this.x, drawY + this.height - 4, this.width, 4);
-
-                // Stone brick lines
-                ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+                // Inner darker outline
+                ctx.strokeStyle = 'rgba(0,0,0,0.6)';
                 ctx.lineWidth = 1;
-                for (let bx = this.x + 25; bx < this.x + this.width; bx += 25) {
+                ctx.strokeRect(this.x + 3, drawY + 3, this.width - 6, this.height - 6);
+
+                // Top edge highlight (cathedral marble)
+                const topGrad = ctx.createLinearGradient(this.x, drawY, this.x, drawY + 6);
+                topGrad.addColorStop(0, topAccent + 'cc');
+                topGrad.addColorStop(1, topAccent + '00');
+                ctx.fillStyle = topGrad;
+                ctx.fillRect(this.x, drawY, this.width, 6);
+
+                // Top line (heavy)
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(this.x, drawY);
+                ctx.lineTo(this.x + this.width, drawY);
+                ctx.stroke();
+
+                // Gothic carved icon at center (varies by type)
+                ctx.save();
+                ctx.translate(this.x + this.width/2, drawY + this.height/2);
+                ctx.fillStyle = accentColor + '60';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1.5;
+
+                if (this.type === 'static') {
+                    // Cross with crown
                     ctx.beginPath();
-                    ctx.moveTo(bx, drawY + 2);
+                    ctx.moveTo(0, -10); ctx.lineTo(0, 10);
+                    ctx.moveTo(-7, 0); ctx.lineTo(7, 0);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.arc(0, -12, 4, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.fillStyle = accentColor;
+                    ctx.beginPath();
+                    ctx.arc(0, -12, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.type === 'moving') {
+                    // Cog/gear (industrial)
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const a = (i * Math.PI / 3);
+                        ctx.moveTo(Math.cos(a) * 8, Math.sin(a) * 8);
+                        ctx.lineTo(Math.cos(a) * 12, Math.sin(a) * 12);
+                    }
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.fillStyle = accentColor;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.type === 'bouncy') {
+                    // Spring coil
+                    ctx.beginPath();
+                    for (let i = 0; i < 5; i++) {
+                        ctx.moveTo(-8 + i * 4, -6);
+                        ctx.lineTo(-6 + i * 4, 0);
+                        ctx.lineTo(-8 + i * 4, 6);
+                        ctx.stroke();
+                    }
+                    ctx.beginPath();
+                    ctx.moveTo(-12, -8);
+                    ctx.lineTo(-12, 8);
+                    ctx.stroke();
+                    ctx.moveTo(12, -8);
+                    ctx.lineTo(12, 8);
+                    ctx.stroke();
+                } else if (this.type === 'floating') {
+                    // Eye of Horus / wings
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 7, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.moveTo(-14, 0); ctx.lineTo(-8, -4); ctx.lineTo(-8, 4); ctx.closePath();
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.moveTo(14, 0); ctx.lineTo(8, -4); ctx.lineTo(8, 4); ctx.closePath();
+                    ctx.fill();
+                }
+                ctx.restore();
+
+                // Stone brick joints (Blasphemous masonry)
+                ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+                ctx.lineWidth = 1;
+                for (let bx = this.x + 30; bx < this.x + this.width - 5; bx += 30) {
+                    ctx.beginPath();
+                    ctx.moveTo(bx, drawY + 5);
                     ctx.lineTo(bx, drawY + this.height - 4);
                     ctx.stroke();
                 }
-                // Horizontal groove
+
+                // Heavy bottom line
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.moveTo(this.x + 2, drawY + this.height/2);
-                ctx.lineTo(this.x + this.width - 2, drawY + this.height/2);
+                ctx.moveTo(this.x, drawY + this.height);
+                ctx.lineTo(this.x + this.width, drawY + this.height);
                 ctx.stroke();
 
-                // Corner rivets
-                ctx.fillStyle = accentColor;
-                ctx.shadowBlur = 4;
-                ctx.shadowColor = accentColor;
-                for (const [rx, ry] of [[this.x + 4, drawY + 4], [this.x + this.width - 4, drawY + 4]]) {
+                // Corner bolts/rivets with heavy outline
+                ctx.fillStyle = '#1a1a1a';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1;
+                for (const [rx, ry] of [[this.x + 5, drawY + 5], [this.x + this.width - 5, drawY + 5]]) {
                     ctx.beginPath();
-                    ctx.arc(rx, ry, 1.5, 0, Math.PI * 2);
+                    ctx.arc(rx, ry, 2, 0, Math.PI * 2);
                     ctx.fill();
+                    ctx.stroke();
                 }
-                ctx.shadowBlur = 0;
 
                 // Arrows for moving
                 if (this.type === 'moving') {
-                    ctx.fillStyle = accentColor;
-                    ctx.font = 'bold 14px Arial';
+                    ctx.fillStyle = topAccent;
+                    ctx.font = 'bold 16px Arial';
                     ctx.textAlign = 'center';
-                    ctx.shadowBlur = 4;
-                    ctx.shadowColor = accentColor;
-                    ctx.fillText(this.moveAxis === 'x' ? '◀ ▶' : '▲ ▼', this.x + this.width/2, drawY + this.height/2 + 5);
+                    ctx.shadowBlur = 6;
+                    ctx.shadowColor = topAccent;
+                    ctx.fillText(this.moveAxis === 'x' ? '◀ ▶' : '▲ ▼', this.x + this.width/2, drawY + this.height/2 + 6);
                     ctx.shadowBlur = 0;
                 }
 
                 // Springs for bouncy (industrial coil)
                 if (this.type === 'bouncy') {
-                    ctx.strokeStyle = accentColor;
-                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = topAccent;
+                    ctx.lineWidth = 2.5;
                     ctx.shadowBlur = 6;
-                    ctx.shadowColor = accentColor;
+                    ctx.shadowColor = topAccent;
                     const sp = drawY + this.height - 6;
                     for (let i = 0; i < 4; i++) {
-                        const sx = this.x + 12 + i * (this.width - 24) / 3;
+                        const sx = this.x + 14 + i * (this.width - 28) / 3;
                         ctx.beginPath();
                         for (let j = 0; j < 4; j++) {
                             const yy = sp - j * 2.5;
@@ -1430,10 +1578,10 @@
 
                 // Floating: energy field marker (chevrons)
                 if (this.type === 'floating') {
-                    ctx.fillStyle = accentColor;
+                    ctx.fillStyle = topAccent;
                     ctx.shadowBlur = 8;
-                    ctx.shadowColor = accentColor;
-                    const cx = this.x + this.width/2;
+                    ctx.shadowColor = topAccent;
+                    const cx = this.x + this.width/2 + 18;
                     for (const dy of [3, 11]) {
                         ctx.beginPath();
                         ctx.moveTo(cx - 5, drawY + dy);
@@ -1450,121 +1598,149 @@
         }
 
         // Collectible
+        // Pickup - ammo crate or health orb
         class Collectible {
-            constructor(x, y, type = 'star') {
+            constructor(x, y, type = 'ammo') {
                 this.x = x; this.y = y;
                 this.baseY = y;
-                this.type = type;
-                this.size = type === 'planet' ? 22 : 16;
+                this.type = type;  // 'ammo' or 'health'
+                this.size = 14;
                 this.collected = false;
                 this.phase = Math.random() * Math.PI * 2;
-                this.rotation = 0;
+                this.rotation = type === 'ammo' ? 0 : 0;
+                this.velocityY = 0;
             }
-            
+
             update() {
-                this.phase += 0.05;
-                this.y = this.baseY + Math.sin(this.phase) * 8;
-                this.rotation += this.type === 'planet' ? 0.02 : 0.06;
+                this.phase += 0.06;
+                this.baseY += this.velocityY;
+                this.velocityY += 0.3;  // gravity
+                if (this.y > this.baseY) { this.y = this.baseY; this.velocityY = 0; }
+                this.y = this.baseY + Math.sin(this.phase) * 4;
             }
-            
+
             draw(ctx) {
                 if (this.collected) return;
 
+                const cx = this.x, cy = this.y;
+                const isHealth = this.type === 'health';
+
                 ctx.save();
-                ctx.translate(this.x, this.y);
 
-                if (this.type === 'star') {
-                    // Aurelia - Imperial gold star with sacred geometry
-                    ctx.rotate(this.rotation);
+                // Heavy outline (Blasphemous aesthetic)
+                if (isHealth) {
+                    // HEALTH ORB: blood drop with holy cross
+                    ctx.shadowBlur = 22;
+                    ctx.shadowColor = '#FF2222';
 
-                    // Outer glow
-                    ctx.shadowBlur = 24;
-                    ctx.shadowColor = '#FFE66D';
-                    const glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size * 1.6);
-                    glowGrad.addColorStop(0, 'rgba(255, 230, 109, 0.6)');
-                    glowGrad.addColorStop(1, 'transparent');
-                    ctx.fillStyle = glowGrad;
+                    // Outer dark halo
+                    const haloGrad = ctx.createRadialGradient(cx, cy, 4, cx, cy, 22);
+                    haloGrad.addColorStop(0, 'rgba(255, 30, 50, 0.5)');
+                    haloGrad.addColorStop(1, 'transparent');
+                    ctx.fillStyle = haloGrad;
                     ctx.beginPath();
-                    ctx.arc(0, 0, this.size * 1.6, 0, Math.PI * 2);
+                    ctx.arc(cx, cy, 22, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // 5-pointed star
-                    ctx.shadowBlur = 16;
+                    // Blood orb with radial gradient
+                    const orbGrad = ctx.createRadialGradient(cx - 3, cy - 3, 2, cx, cy, 13);
+                    orbGrad.addColorStop(0, '#FFAAAA');
+                    orbGrad.addColorStop(0.5, '#FF3333');
+                    orbGrad.addColorStop(1, '#8B0000');
+                    ctx.fillStyle = orbGrad;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Heavy black outline (Blasphemous style)
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 2.5;
+                    ctx.stroke();
+
+                    // Holy cross in middle (Ecumenical style)
+                    ctx.fillStyle = '#FFE66D';
+                    ctx.shadowBlur = 0;
+                    const cs = 6;
+                    ctx.fillRect(cx - 1, cy - cs, 2, cs * 2);
+                    ctx.fillRect(cx - cs, cy - 1, cs * 2, 2);
+                    // Cross highlight
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 0.6;
+                    ctx.strokeRect(cx - 1, cy - cs, 2, cs * 2);
+                    ctx.strokeRect(cx - cs, cy - 1, cs * 2, 2);
+
+                    // Drip below
+                    ctx.fillStyle = '#8B0000';
+                    ctx.beginPath();
+                    ctx.ellipse(cx + 4, cy + 11, 1.5, 2.5, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // AMMO CRATE: gothic/blackmetal cache with bolt icon
+                    ctx.shadowBlur = 18;
+                    ctx.shadowColor = '#FFE66D';
+
+                    // Outer halo (flicker)
+                    const t = Math.sin(this.phase * 2) * 0.3 + 0.6;
+                    ctx.fillStyle = `rgba(255, 220, 80, ${t * 0.4})`;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Wooden crate
+                    ctx.save();
+                    ctx.translate(cx, cy);
+                    ctx.rotate(Math.sin(this.phase * 0.3) * 0.06);
+
+                    // Crate body
+                    const crateGrad = ctx.createLinearGradient(-12, -12, 12, 12);
+                    crateGrad.addColorStop(0, '#6B4A1A');
+                    crateGrad.addColorStop(0.5, '#4A3210');
+                    crateGrad.addColorStop(1, '#2A1A05');
+                    ctx.fillStyle = crateGrad;
+                    ctx.fillRect(-12, -10, 24, 20);
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(-12, -10, 24, 20);
+
+                    // Crate planks
+                    ctx.strokeStyle = '#1a0f00';
+                    ctx.lineWidth = 1.2;
+                    ctx.beginPath();
+                    ctx.moveTo(-12, -3); ctx.lineTo(12, -3);
+                    ctx.moveTo(-12, 4); ctx.lineTo(12, 4);
+                    ctx.stroke();
+
+                    // Iron corner brackets
+                    ctx.fillStyle = '#444';
+                    ctx.fillRect(-12, -10, 4, 4);
+                    ctx.fillRect(8, -10, 4, 4);
+                    ctx.fillRect(-12, 6, 4, 4);
+                    ctx.fillRect(8, 6, 4, 4);
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 0.8;
+                    for (const [bx, by] of [[-12, -10], [8, -10], [-12, 6], [8, 6]]) {
+                        ctx.strokeRect(bx, by, 4, 4);
+                    }
+
+                    // Aquila sticker (gold)
                     ctx.fillStyle = '#FFD700';
                     ctx.beginPath();
-                    for (let i = 0; i < 10; i++) {
-                        const a = (i * Math.PI / 5) - Math.PI/2;
-                        const r = i % 2 === 0 ? this.size : this.size * 0.42;
-                        const px = Math.cos(a) * r;
-                        const py = Math.sin(a) * r;
-                        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-                    }
+                    ctx.moveTo(-3, -7);
+                    ctx.lineTo(0, -2);
+                    ctx.lineTo(0, 4);
+                    ctx.lineTo(-3, 1);
+                    ctx.lineTo(0, 1);
+                    ctx.lineTo(0, -2);
                     ctx.closePath();
                     ctx.fill();
-
-                    // Inner crystal core
-                    ctx.shadowBlur = 0;
-                    ctx.fillStyle = '#FFFFFF';
                     ctx.beginPath();
-                    ctx.arc(0, 0, this.size * 0.25, 0, Math.PI * 2);
+                    ctx.moveTo(0, -2);
+                    ctx.lineTo(3, -7);
+                    ctx.lineTo(6, -1);
+                    ctx.lineTo(3, 1);
+                    ctx.closePath();
                     ctx.fill();
-
-                    // 4 small orbs around (cross style)
-                    ctx.fillStyle = '#FFE66D';
-                    ctx.shadowBlur = 8;
-                    ctx.shadowColor = '#FFE66D';
-                    for (let i = 0; i < 4; i++) {
-                        const a = i * Math.PI / 2 + this.rotation;
-                        ctx.beginPath();
-                        ctx.arc(Math.cos(a) * this.size * 1.2, Math.sin(a) * this.size * 1.2, 2, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-                } else {
-                    // Planet with sacred geometry rings
-                    ctx.shadowBlur = 24;
-                    ctx.shadowColor = '#8B5CF6';
-
-                    // Outer soft glow
-                    const glowGrad = ctx.createRadialGradient(0, 0, this.size * 0.7, 0, 0, this.size * 1.6);
-                    glowGrad.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
-                    glowGrad.addColorStop(1, 'transparent');
-                    ctx.fillStyle = glowGrad;
-                    ctx.beginPath();
-                    ctx.arc(0, 0, this.size * 1.6, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    // Planet body
-                    const g = ctx.createRadialGradient(-this.size * 0.3, -this.size * 0.3, 1, 0, 0, this.size);
-                    g.addColorStop(0, '#C4A8FF');
-                    g.addColorStop(0.6, '#8B5CF6');
-                    g.addColorStop(1, '#3a2570');
-                    ctx.fillStyle = g;
-                    ctx.beginPath();
-                    ctx.arc(0, 0, this.size, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    // Surface crater detail
-                    ctx.fillStyle = 'rgba(50, 30, 100, 0.4)';
-                    for (const [cx, cy, cr] of [[this.size * 0.4, this.size * 0.2, 3], [-this.size * 0.3, -this.size * 0.4, 4], [this.size * 0.2, this.size * 0.5, 2]]) {
-                        ctx.beginPath();
-                        ctx.arc(cx, cy, cr, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-
-                    // Saturn-like ring
-                    ctx.shadowBlur = 8;
-                    ctx.strokeStyle = '#FFD700';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.ellipse(0, 0, this.size * 1.4, this.size * 0.45, 0.3, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    // Ring detail
-                    ctx.strokeStyle = '#FFE66D';
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.ellipse(0, 0, this.size * 1.6, this.size * 0.5, 0.3, 0.1, Math.PI * 2 - 0.1);
-                    ctx.stroke();
+                    ctx.restore();
                 }
 
                 ctx.restore();
@@ -1573,7 +1749,7 @@
             checkCollision(player) {
                 const dx = this.x - (player.x + player.width/2);
                 const dy = this.y - (player.y + player.height/2);
-                return Math.sqrt(dx*dx + dy*dy) < this.size + 22;
+                return Math.sqrt(dx*dx + dy*dy) < 22;
             }
         }
 
@@ -1582,84 +1758,313 @@
             constructor(x, y, type = 'patrol') {
                 this.x = x; this.y = y;
                 this.startX = x; this.startY = y;
-                this.width = type === 'boss' ? 90 : 40;
-                this.height = type === 'boss' ? 110 : 50;
+                // Type-based dimensions
+                const dim = {
+                    'patrol':    [40, 50], 'shooter': [40, 50], 'chaser':  [40, 50],
+                    'floater':   [40, 50], 'cultist': [36, 46], 'traitor': [44, 54],
+                    'plague':    [55, 65], 'obliter':[50, 60], 'boss':    [90, 110]
+                }[type] || [40, 50];
+                this.width = dim[0]; this.height = dim[1];
                 this.type = type;
-                this.moveRange = 140;
-                this.moveSpeed = 2;
                 this.moveDir = 1;
                 this.animFrame = 0; this.animTimer = 0;
                 this.alive = true;
-                this.health = type === 'boss' ? 15 : (type === 'shooter' || type === 'chaser') ? 2 : 1;
+
+                // Type-based HP / behavior
+                const hpMap = {
+                    'patrol': 1, 'shooter': 2, 'chaser': 2, 'floater': 2,
+                    'cultist': 1, 'traitor': 3, 'plague': 5, 'obliter': 6,
+                    'boss': 15
+                };
+                this.health = hpMap[type] || 1;
                 this.maxHealth = this.health;
+                this.contactDamage = {
+                    'patrol': 1, 'shooter': 1, 'chaser': 1, 'floater': 1,
+                    'cultist': 1, 'traitor': 2, 'plague': 2, 'obliter': 2,
+                    'boss': 3
+                }[type] || 1;
+
+                // AI state
+                this.state = 'idle';        // idle / aggro / attack / cooldown / cooldown
+                this.stateTimer = 0;
+                this.moveRange = type === 'boss' ? 80 : 140;
+                this.moveSpeed = type === 'chaser' ? 3 : (type === 'plague' ? 1.2 : 2.2);
                 this.shootTimer = 0;
-                this.shootInterval = type === 'boss' ? 80 : 100;
+                this.shootInterval = {
+                    'shooter': 80, 'floater': 60, 'cultist': 90,
+                    'obliter': 50, 'boss': 50
+                }[type] || 100;
+                this.attackCooldown = 0;
+                this.attackCooldownMax = {
+                    'patrol': 90, 'chaser': 60, 'shooter': 30, 'floater': 40,
+                    'cultist': 100, 'traitor': 70, 'plague': 110, 'obliter': 70,
+                    'boss': 30
+                }[type] || 80;
+                this.aggroRange = 280;
+                this.fleeRange = 0;     // some enemies flee when close
+                this.skillCast = 0;    // current skill animation frames
+                this.skillType = null;
+                this.facePlayer = type !== 'patrol';
+                this.chargeDir = 0; this.chargeFrames = 0;  // chaser dash
+                this.teleportTimer = 0;  // floater blink
             }
-            
-            update(playerX, game) {
+
+            update(playerX, playerY, game) {
                 if (!this.alive) return;
-                
                 this.animTimer++;
                 if (this.animTimer > 10) {
                     this.animTimer = 0;
-                    this.animFrame = (this.animFrame + 1) % 2;
+                    this.animFrame = (this.animFrame + 1) % 4;
                 }
-                
-                switch(this.type) {
+                if (this.attackCooldown > 0) this.attackCooldown--;
+                if (this.skillCast > 0) {
+                    this.skillCast--;
+                    if (this.skillCast === 0) {
+                        this.state = 'cooldown';
+                        this.stateTimer = 30;
+                    }
+                }
+
+                const dx = playerX - this.x;
+                const dist = Math.abs(dx);
+                if (this.facePlayer) this.moveDir = dx > 0 ? 1 : -1;
+
+                switch (this.type) {
                     case 'patrol':
+                        // HERETIC SCOUT - basic patrol, charges when player close
+                        if (this.skillCast > 0) break;
                         this.x += this.moveSpeed * this.moveDir;
-                        if (this.x > this.startX + this.moveRange || this.x < this.startX - this.moveRange) {
-                            this.moveDir *= -1;
+                        if (this.x > this.startX + this.moveRange || this.x < this.startX - this.moveRange) this.moveDir *= -1;
+                        if (this.attackCooldown === 0 && dist < 70) {
+                            this.state = 'attack';
+                            this.skillCast = 16;
+                            this.attackCooldown = this.attackCooldownMax;
                         }
                         break;
-                    case 'floater':
-                        this.y = this.startY + Math.sin(Date.now() / 500) * 28;
+                    case 'chaser':
+                        // CHAOTIC CULTIST - quick melee rush with dagger slash
+                        if (this.skillCast > 0) break;
+                        if (this.attackCooldown === 0 && dist < 80) {
+                            this.state = 'attack';
+                            this.skillCast = 20;
+                            this.attackCooldown = this.attackCooldownMax;
+                            this.chargeDir = this.moveDir;
+                            this.chargeFrames = 12;
+                            // Charge forward
+                            for (let i = 0; i < this.chargeFrames; i++) {
+                                this.x += 6 * this.chargeDir;
+                            }
+                            game.particles.emitSparks(this.x, this.y + this.height/2, '#ffaa00', 6, this.moveDir);
+                            AudioManager.play('enemyShoot');
+                        } else if (Math.abs(dx) > 60) {
+                            // Pursue
+                            this.x += Math.sign(dx) * this.moveSpeed * 1.4;
+                        }
+                        this.y = this.startY + Math.sin(this.animTimer / 12) * 6;
                         break;
                     case 'shooter':
-                        if (Math.abs(playerX - this.x) < 350) {
-                            this.moveDir = playerX > this.x ? 1 : -1;
+                        // HERETIC ASTARTES SHOOTER - backpedals when too close, fires bolter
+                        if (this.skillCast > 0) break;
+                        this.y = this.startY + Math.sin(this.animTimer / 20) * 3;
+                        if (dist < 150) {
+                            // Retreat
+                            this.x -= Math.sign(dx) * this.moveSpeed * 0.6;
+                        } else if (dist > this.aggroRange) {
+                            // Reposition
+                            this.x += this.moveSpeed * 0.4 * this.moveDir;
                         }
                         this.shootTimer++;
-                        if (this.shootTimer >= this.shootInterval) {
+                        if (dist < this.aggroRange && this.shootTimer >= this.shootInterval) {
                             this.shootTimer = 0;
+                            this.skillCast = 10;
                             game.enemyBullets.push(new Bullet(
-                                this.x + this.width/2,
-                                this.y + this.height/2,
+                                this.x + this.width/2 + (this.moveDir > 0 ? 5 : -5),
+                                this.y + this.height/2 - 5,
                                 this.moveDir, false
                             ));
                             AudioManager.play('enemyShoot');
                         }
                         break;
-                    case 'chaser':
-                        if (playerX < this.x - 40) {
-                            this.x -= this.moveSpeed * 1.8;
-                            this.moveDir = -1;
-                        } else if (playerX > this.x + 40) {
-                            this.x += this.moveSpeed * 1.8;
-                            this.moveDir = 1;
-                        }
-                        this.y = this.startY + Math.sin(Date.now() / 350) * 18;
-                        break;
-                    case 'boss':
-                        this.x += this.moveSpeed * 0.4 * this.moveDir;
-                        if (this.x > this.startX + this.moveRange || this.x < this.startX - this.moveRange) {
-                            this.moveDir *= -1;
-                        }
-                        this.y = this.startY + Math.sin(Date.now() / 500) * 35;
-                        
+                    case 'floater':
+                        // SERVO-SKULL DAEMONHOST - warp projectiles + teleport
+                        if (this.skillCast > 0) break;
+                        this.y = this.startY + Math.sin(this.animTimer / 18) * 25;
                         this.shootTimer++;
-                        if (this.shootTimer >= this.shootInterval) {
+                        if (dist < this.aggroRange && this.shootTimer >= this.shootInterval) {
                             this.shootTimer = 0;
+                            this.skillCast = 14;
+                            // 3-way warp fire (downward arc)
                             for (let i = -1; i <= 1; i++) {
+                                const bullet = new Bullet(
+                                    this.x + this.width/2,
+                                    this.y + this.height/2 + 8,
+                                    this.moveDir, false
+                                );
+                                bullet.warp = true;
+                                bullet.arc = i * 0.06;
+                                game.enemyBullets.push(bullet);
+                            }
+                            AudioManager.play('enemyShoot');
+                        }
+                        this.teleportTimer++;
+                        if (this.teleportTimer > 200 && dist > 200) {
+                            this.teleportTimer = 0;
+                            game.particles.emitSmoke(this.x + this.width/2, this.y + this.height/2, 5);
+                            this.x = playerX + (Math.random() < 0.5 ? 60 : -60);
+                            game.particles.emitSmoke(this.x + this.width/2, this.y + this.height/2, 5);
+                        }
+                        break;
+                    case 'cultist':
+                        // MILITIA CULTIST - panic fires scatter shot, weak
+                        if (this.skillCast > 0) break;
+                        this.x += this.moveSpeed * 0.5 * this.moveDir;
+                        if (this.x > this.startX + 60 || this.x < this.startX - 60) this.moveDir *= -1;
+                        this.shootTimer++;
+                        if (dist < 250 && this.shootTimer >= this.shootInterval) {
+                            this.shootTimer = 0;
+                            this.skillCast = 14;
+                            // Scatter - 2 shots with slight spread
+                            for (let i = 0; i < 2; i++) {
+                                const b = new Bullet(
+                                    this.x + this.width/2,
+                                    this.y + this.height/2 - 5,
+                                    this.moveDir, false
+                                );
+                                b.arc = (i === 0 ? -0.08 : 0.08);
+                                game.enemyBullets.push(b);
+                            }
+                            AudioManager.play('enemyShoot');
+                        }
+                        break;
+                    case 'traitor':
+                        // HERETIC ASTARTES TRAITOR - heavy melee with chainsword sweep
+                        if (this.skillCast > 0) break;
+                        if (Math.abs(dx) > 70) this.x += Math.sign(dx) * this.moveSpeed * 1.2;
+                        this.y = this.startY + Math.sin(this.animTimer / 16) * 8;
+                        if (this.attackCooldown === 0 && dist < 80) {
+                            this.state = 'attack';
+                            this.skillCast = 24;
+                            this.attackCooldown = this.attackCooldownMax;
+                            // Sweep attack
+                            game.particles.emitShockwave(this.x + (this.moveDir > 0 ? this.width : 0), this.y + this.height/2, '#ffaa00', 6);
+                            AudioManager.play('enemyShoot');
+                        }
+                        break;
+                    case 'plague':
+                        // PLAGUE MARINE - slow + toxic AOE cloud
+                        if (this.skillCast > 0) break;
+                        this.x += this.moveSpeed * 0.5 * this.moveDir;
+                        if (this.x > this.startX + 60 || this.x < this.startX - 60) this.moveDir *= -1;
+                        this.shootTimer++;
+                        if (dist < 180 && this.shootTimer >= this.shootInterval) {
+                            this.shootTimer = 0;
+                            this.skillCast = 22;
+                            // Toxic cloud at player's predicted position
+                            const tx = playerX + dx * 0.3;
+                            game.particles.emit(this.x + this.width/2, this.y + this.height/2, '#7fff4f', 24);
+                            for (let i = 0; i < 6; i++) {
+                                game.enemyBullets.push(new Bullet(
+                                    tx + (Math.random() - 0.5) * 50,
+                                    this.y + this.height,
+                                    0, false
+                                ));
+                            }
+                            AudioManager.play('enemyShoot');
+                        }
+                        break;
+                    case 'obliter':
+                        // OBLITERATOR - twin-linked heavy plasma
+                        if (this.skillCast > 0) break;
+                        this.x += this.moveSpeed * 0.3 * this.moveDir;
+                        if (this.x > this.startX + 50 || this.x < this.startX - 50) this.moveDir *= -1;
+                        this.shootTimer++;
+                        if (dist < this.aggroRange && this.shootTimer >= this.shootInterval) {
+                            this.shootTimer = 0;
+                            this.skillCast = 18;
+                            // Twin plasma bolts
+                            for (const off of [-8, 8]) {
                                 game.enemyBullets.push(new Bullet(
                                     this.x + this.width/2,
-                                    this.y + this.height/2,
+                                    this.y + this.height/2 + off,
                                     this.moveDir, false
                                 ));
                             }
                             AudioManager.play('enemyShoot');
                         }
                         break;
+                    case 'boss':
+                        // CHAOS LORD - hovers, multi-phase: shoots / summons / warp strike / charge
+                        this.x += this.moveSpeed * 0.3 * this.moveDir;
+                        if (this.x > this.startX + this.moveRange || this.x < this.startX - this.moveRange) this.moveDir *= -1;
+                        this.y = this.startY + Math.sin(this.animTimer / 16) * 35 + Math.sin(this.animTimer / 8) * 4;
+                        const hpPct = this.health / this.maxHealth;
+                        // Phase-based attack cadence: faster as HP drops
+                        if (hpPct < 0.34) this.attackCooldownMax = 18;
+                        else if (hpPct < 0.67) this.attackCooldownMax = 24;
+                        else this.attackCooldownMax = 32;
+                        this.shootTimer++;
+                        if (this.attackCooldown === 0) {
+                            this.attackCooldown = this.attackCooldownMax;
+                            const skill = Math.floor(Math.random() * 3);
+                            if (skill === 0) {
+                                // Triple spread + down-shot
+                                this.skillCast = 30;
+                                for (let i = -1; i <= 1; i++) {
+                                    game.enemyBullets.push(new Bullet(
+                                        this.x + this.width/2,
+                                        this.y + this.height/2 + i * 12,
+                                        this.moveDir, false
+                                    ));
+                                }
+                                game.enemyBullets.push(new Bullet(
+                                    this.x + this.width/2,
+                                    this.y + this.height/2 + 8,
+                                    this.moveDir * 0.3, false  // down-shot
+                                ));
+                                game.particles.emitShockwave(this.x, this.y + this.height/2, '#FF0000', 12);
+                                game.screenShake = Math.min(6, game.screenShake + 2);
+                            } else if (skill === 1) {
+                                // Summon lesser daemons (1-2)
+                                this.skillCast = 40;
+                                game.particles.emitExplosion(this.x + this.width/2, this.y + this.height/2, '#8B0000', 30);
+                                game.particles.emitSmoke(this.x + this.width/2, this.y + this.height/2, 8);
+                                setTimeout(() => {}, 0);
+                                if (game.collectibles && hpPct < 0.5) {
+                                    const summonX = this.x + this.moveDir * 80 + (Math.random() - 0.5) * 40;
+                                    const summon = new Enemy(summonX, this.y, 'cultist');
+                                    game.enemies.push(summon);
+                                }
+                            } else {
+                                // Warp strike - lunge to player y level, fire burst
+                                this.skillCast = 24;
+                                const warpTargetY = game.player.y - this.y;
+                                this.vy = warpTargetY / 8;
+                                for (let i = 0; i < 5; i++) {
+                                    setTimeout((idx) => {
+                                        game.enemyBullets.push(new Bullet(
+                                            this.x + this.width/2,
+                                            this.y + this.height/2,
+                                            this.moveDir, false
+                                        ));
+                                    }, i * 30);
+                                }
+                                game.particles.emitSparks(this.x + this.width/2, this.y + this.height/2, '#aa66ff', 14, this.moveDir);
+                            }
+                            AudioManager.play('enemyShoot');
+                        }
+                        // Apply vy if present
+                        if (this.vy) {
+                            this.y += this.vy || 0;
+                            if (this.vy > 0) this.vy = Math.max(0, this.vy - 0.5);
+                            else if (this.vy < 0) this.vy = Math.min(0, this.vy + 0.5);
+                        }
+                        break;
+                }
+
+                // State cleanup
+                if (this.state === 'cooldown') {
+                    this.stateTimer--;
+                    if (this.stateTimer <= 0) this.state = 'idle';
                 }
             }
             
@@ -1684,7 +2089,11 @@
                     case 'patrol':
                     case 'shooter':
                     case 'chaser':
-                        this.drawAlien(ctx, wobble);
+                    case 'cultist':
+                    case 'traitor':
+                    case 'plague':
+                    case 'obliter':
+                        this.drawWarrior(ctx, wobble);
                         break;
                     case 'floater':
                         this.drawFloater(ctx, wobble);
@@ -1697,105 +2106,184 @@
                 ctx.restore();
             }
             
-            drawAlien(ctx, wobble) {
-                const isChaser = this.type === 'chaser';
-                const isShooter = this.type === 'shooter';
-                const armor = isChaser ? '#3a0a0a' : '#4a1515';
-                const trim = isChaser ? '#8B0000' : '#A52A2A';
-                const highlight = isChaser ? '#5a1010' : '#6a2020';
+            drawWarrior(ctx, wobble) {
+                const t = this.type;
+                // Variant color palettes
+                const palette = {
+                    patrol:  { armor:'#4a1515', trim:'#A52A2A', hi:'#6a2020', helmTrim:'#FFD700', eye:'#ff0000', weapon:'bolter' },
+                    chaser:  { armor:'#3a0a0a', trim:'#8B0000', hi:'#5a1010', helmTrim:'#FF8888', eye:'#ffaa44', weapon:'chainsword' },
+                    shooter: { armor:'#1a1a3a', trim:'#4848A0', hi:'#3838AA', helmTrim:'#88AAFF', eye:'#00d4ff', weapon:'lasgun' },
+                    cultist: { armor:'#3a2a1a', trim:'#8B5C00', hi:'#5C3A1A', helmTrim:'#FFB84A', eye:'#ffaa44', weapon:'autogun' },
+                    traitor: { armor:'#2a1515', trim:'#8B0000', hi:'#8a1010', helmTrim:'#FF4444', eye:'#ff0000', weapon:'powerclaw' },
+                    plague:  { armor:'#2a4a1a', trim:'#4A7C1A', hi:'#7CAA44', helmTrim:'#88FF44', eye:'#aaff44', weapon:'plaguewind' },
+                    obliter: { armor:'#4a4a4a', trim:'#7A7A8A', hi:'#9A9AAA', helmTrim:'#aa44ff', eye:'#aa44ff', weapon:'cannon' }
+                }[t] || { armor:'#4a1515', trim:'#A52A2A', hi:'#6a2020', helmTrim:'#FFD700', eye:'#ff0000', weapon:'bolter' };
 
                 ctx.shadowBlur = 14;
-                ctx.shadowColor = '#ff1a1a';
+                ctx.shadowColor = palette.eye;
 
-                // Backpack / pauldron (left shoulder)
-                ctx.fillStyle = '#1a1a1a';
-                ctx.strokeStyle = '#ff4444';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(-22, -8); ctx.lineTo(-12, -8);
-                ctx.lineTo(-10, 6); ctx.lineTo(-20, 6); ctx.closePath();
-                ctx.fill(); ctx.stroke();
-                // Spike on pauldron
-                ctx.fillStyle = '#888';
-                ctx.beginPath();
-                ctx.moveTo(-16, -8); ctx.lineTo(-18, -16); ctx.lineTo(-14, -10); ctx.closePath();
-                ctx.fill();
+                // Backpack (only for heavy warriors)
+                if (['chaotic', 'traitor', 'plague', 'obliter'].includes(t)) {
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.rect(8, 18, 18, 28);
+                    ctx.fill(); ctx.stroke();
+                    // Vents
+                    ctx.fillStyle = '#888';
+                    for (const vy of [22, 28, 34]) ctx.fillRect(12, vy, 11, 2);
+                    // Glow for plague (toxic)
+                    if (t === 'plague') {
+                        ctx.fillStyle = '#7fff4f';
+                        ctx.shadowBlur = 8;
+                        ctx.shadowColor = '#7fff4f';
+                        ctx.fillRect(12, 22, 11, 2);
+                        ctx.fillRect(12, 28, 11, 2);
+                    }
+                }
 
-                // Main torso armor (Mark III Iron pattern)
+                // Torso armor
                 const bodyGrad = ctx.createLinearGradient(-18, -5, 18, 20);
-                bodyGrad.addColorStop(0, highlight);
-                bodyGrad.addColorStop(0.5, armor);
-                bodyGrad.addColorStop(1, '#1a0505');
+                bodyGrad.addColorStop(0, palette.hi);
+                bodyGrad.addColorStop(0.5, palette.armor);
+                bodyGrad.addColorStop(1, '#0a0202');
                 ctx.fillStyle = bodyGrad;
                 ctx.strokeStyle = '#000';
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 2.5;
                 ctx.beginPath();
                 ctx.moveTo(-16, -4); ctx.lineTo(16, -4);
                 ctx.lineTo(18, 18); ctx.lineTo(-18, 18); ctx.closePath();
                 ctx.fill(); ctx.stroke();
 
-                // Chest plate center line
+                // Chapter symbol (or Chaos star for traitor, Nurgle for plague, etc.)
                 ctx.strokeStyle = '#000';
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.moveTo(0, -2); ctx.lineTo(0, 16); ctx.stroke();
-
-                // Imperial aquila on chest
-                ctx.fillStyle = '#FFD700';
+                ctx.lineWidth = 1;
+                ctx.fillStyle = palette.helmTrim;
                 ctx.shadowBlur = 6;
-                ctx.shadowColor = '#FFD700';
-                ctx.beginPath();
-                ctx.moveTo(-6, 2); ctx.lineTo(-2, 6); ctx.lineTo(0, 4);
-                ctx.lineTo(2, 6); ctx.lineTo(6, 2);
-                ctx.lineTo(3, 8); ctx.lineTo(-3, 8); ctx.closePath();
-                ctx.fill();
+                ctx.shadowColor = palette.helmTrim;
+                if (t === 'traitor') {
+                    // 8-pointed chaos star
+                    ctx.beginPath();
+                    for (let i = 0; i < 8; i++) {
+                        const a = (i * Math.PI / 4) - Math.PI / 2;
+                        const r = i % 2 === 0 ? 7 : 3;
+                        const px = Math.cos(a) * r;
+                        const py = Math.sin(a) * r;
+                        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+                    }
+                    ctx.closePath(); ctx.fill();
+                } else if (t === 'plague') {
+                    // Nurgle symbol: 3 dots representing fly's egg
+                    ctx.beginPath();
+                    ctx.arc(-4, 3, 2.5, 0, Math.PI * 2);
+                    ctx.arc(4, 3, 2.5, 0, Math.PI * 2);
+                    ctx.arc(0, 7, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (t === 'obliter') {
+                    // Metallic skull
+                    ctx.beginPath();
+                    ctx.arc(0, 5, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (t === 'cultist') {
+                    // Crescent moon
+                    ctx.beginPath();
+                    ctx.arc(0, 5, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = palette.armor;
+                    ctx.beginPath();
+                    ctx.arc(2, 3, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // Standard aquila (sm)
+                    ctx.beginPath();
+                    ctx.moveTo(-6, 2); ctx.lineTo(-2, 6); ctx.lineTo(0, 4);
+                    ctx.lineTo(2, 6); ctx.lineTo(6, 2);
+                    ctx.lineTo(3, 8); ctx.lineTo(-3, 8); ctx.closePath();
+                    ctx.fill();
+                }
                 ctx.shadowBlur = 0;
 
+                // Purity seal (drop of blood wax)
+                if (t !== 'plague' && t !== 'traitor') {
+                    ctx.fillStyle = '#8B0000';
+                    ctx.fillRect(-1, 14, 2, 4);
+                } else {
+                    // Pin/cap badge for chaos
+                    ctx.fillStyle = '#444';
+                    ctx.beginPath();
+                    ctx.arc(13, -2, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
                 // Armor rivets
-                ctx.fillStyle = '#222';
-                for (const [rx, ry] of [[-13, -1], [13, -1], [-14, 14], [14, 14], [-15, 7], [15, 7]]) {
+                ctx.fillStyle = '#1a1a1a';
+                for (const [rx, ry] of [[-13, -1], [13, -1], [-14, 14], [14, 14]]) {
                     ctx.beginPath();
                     ctx.arc(rx, ry, 1.2, 0, Math.PI * 2);
                     ctx.fill();
                 }
 
-                // Helmet (Mark III style - aggressive visor)
+                // HELMET
                 const helmGrad = ctx.createLinearGradient(-15, -28, 15, -4);
-                helmGrad.addColorStop(0, armor);
-                helmGrad.addColorStop(0.6, highlight);
-                helmGrad.addColorStop(1, '#2a0808');
+                helmGrad.addColorStop(0, palette.armor);
+                helmGrad.addColorStop(0.6, palette.hi);
+                helmGrad.addColorStop(1, '#0a0202');
                 ctx.fillStyle = helmGrad;
                 ctx.strokeStyle = '#000';
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 2.5;
                 ctx.beginPath();
                 ctx.moveTo(-14, -10); ctx.lineTo(-12, -24);
                 ctx.lineTo(-8, -28); ctx.lineTo(8, -28);
                 ctx.lineTo(12, -24); ctx.lineTo(14, -10); ctx.closePath();
                 ctx.fill(); ctx.stroke();
 
-                // Helmet crest (single fin)
-                ctx.fillStyle = '#FFD700';
+                // Helmet crest (varies)
+                ctx.fillStyle = palette.helmTrim;
                 ctx.strokeStyle = '#000';
                 ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(0, -28); ctx.lineTo(-2, -38);
-                ctx.lineTo(2, -38); ctx.lineTo(2, -28); ctx.closePath();
-                ctx.fill(); ctx.stroke();
+                if (t === 'traitor') {
+                    // Horns - 2-pointed crown
+                    ctx.beginPath();
+                    ctx.moveTo(-8, -28); ctx.lineTo(-10, -36); ctx.lineTo(-6, -28); ctx.closePath();
+                    ctx.fill(); ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(8, -28); ctx.lineTo(10, -36); ctx.lineTo(6, -28); ctx.closePath();
+                    ctx.fill(); ctx.stroke();
+                } else if (t === 'plague') {
+                    // Multiple vents
+                    ctx.fillRect(-1, -33, 2, 8);
+                    ctx.fillRect(-4, -30, 2, 5);
+                    ctx.fillRect(2, -30, 2, 5);
+                } else if (t === 'obliter') {
+                    // Twin antennae
+                    ctx.beginPath();
+                    ctx.moveTo(-3, -28); ctx.lineTo(-2, -38);
+                    ctx.moveTo(3, -28); ctx.lineTo(2, -38);
+                    ctx.stroke();
+                    ctx.fillStyle = palette.helmTrim;
+                    ctx.beginPath();
+                    ctx.arc(-2, -38, 1.5, 0, Math.PI * 2);
+                    ctx.arc(2, -38, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // Standard fin
+                    ctx.beginPath();
+                    ctx.moveTo(0, -28); ctx.lineTo(-2, -38);
+                    ctx.lineTo(2, -38); ctx.lineTo(2, -28); ctx.closePath();
+                    ctx.fill(); ctx.stroke();
+                }
 
-                // Glowing red eye lenses
-                ctx.fillStyle = '#ff0000';
+                // Eye lens (single glowing eye for tất cả - WH40K convention)
+                ctx.fillStyle = palette.eye;
                 ctx.shadowBlur = 12;
-                ctx.shadowColor = '#ff0000';
-                ctx.fillRect(-10, -18, 7, 3);
-                ctx.fillRect(3, -18, 7, 3);
+                ctx.shadowColor = palette.eye;
+                ctx.fillRect(-10, -18, 20, 3);
                 ctx.shadowBlur = 0;
+                ctx.fillStyle = `${palette.eye}44`;
+                ctx.fillRect(-11, -17, 22, 1);
 
-                // Eye glow trail
-                ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
-                ctx.fillRect(-11, -17, 9, 1);
-                ctx.fillRect(2, -17, 9, 1);
-
-                // Mouth grille (skull-like teeth)
+                // Mouth grille
                 ctx.fillStyle = '#000';
                 ctx.fillRect(-7, -10, 14, 4);
                 ctx.strokeStyle = '#444';
@@ -1805,37 +2293,137 @@
                     ctx.moveTo(i, -10); ctx.lineTo(i, -6); ctx.stroke();
                 }
 
-                // Bolter gun (if shooter)
-                if (isShooter) {
+                // Plague specific: boils/pustules
+                if (t === 'plague') {
+                    ctx.fillStyle = '#88cc44';
+                    ctx.shadowBlur = 4;
+                    ctx.shadowColor = '#88cc44';
+                    for (const [bx, by, br] of [[-13, 5, 2], [13, 8, 1.5], [-10, 12, 1.5]]) {
+                        ctx.beginPath();
+                        ctx.arc(bx, by, br, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.shadowBlur = 0;
+                }
+
+                // Obliterator: twin weapons
+                if (t === 'obliter') {
+                    for (const [gx, gy] of [[-25, 0], [13, 0]]) {
+                        ctx.fillStyle = '#1a1a1a';
+                        ctx.strokeStyle = '#000';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.moveTo(gx, -3); ctx.lineTo(gx + 10, -3);
+                        ctx.lineTo(gx + 10, 5); ctx.lineTo(gx, 5); ctx.closePath();
+                        ctx.fill(); ctx.stroke();
+                        // Twin barrels
+                        ctx.fillStyle = '#333';
+                        ctx.fillRect(gx + 8, 0, 4, 2);
+                        ctx.fillRect(gx + 8, 2, 4, 2);
+                    }
+                } else if (t === 'plague') {
+                    // Plague belches a toxic cloud
+                    ctx.fillStyle = '#88ff66';
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = '#88ff66';
+                    for (const bx of [-12, 12]) {
+                        ctx.beginPath();
+                        ctx.arc(bx, -2, 4, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.shadowBlur = 0;
+                } else if (palette.weapon === 'chainsword') {
+                    // Chainsword with teeth
+                    ctx.fillStyle = '#333';
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 1;
+                    const gw = 18;
+                    const gx = this.moveDir > 0 ? 14 : -gw - 4;
+                    ctx.fillRect(gx, 1, gw, 5);
+                    for (let i = 2; i < gw - 4; i += 3) {
+                        ctx.fillStyle = '#aaa';
+                        ctx.beginPath();
+                        ctx.moveTo(gx + i, 0); ctx.lineTo(gx + i + 1.5, -2);
+                        ctx.lineTo(gx + i + 3, 0); ctx.closePath();
+                        ctx.fill();
+                    }
+                } else if (palette.weapon === 'bolter' || palette.weapon === 'autogun' || palette.weapon === 'lasgun') {
                     ctx.fillStyle = '#1a1a1a';
                     ctx.strokeStyle = '#000';
                     ctx.lineWidth = 1.5;
-                    const gx = this.moveDir > 0 ? 14 : -28;
+                    const gx = this.moveDir > 0 ? 14 : -26;
                     ctx.beginPath();
-                    ctx.moveTo(gx, -1); ctx.lineTo(gx + 14, -1);
-                    ctx.lineTo(gx + 14, 6); ctx.lineTo(gx, 6); ctx.closePath();
+                    ctx.moveTo(gx, -1); ctx.lineTo(gx + 12, -1);
+                    ctx.lineTo(gx + 12, 5); ctx.lineTo(gx, 5); ctx.closePath();
                     ctx.fill(); ctx.stroke();
-                    // Gun barrel
                     ctx.fillStyle = '#333';
-                    ctx.fillRect(this.moveDir > 0 ? gx + 12 : gx - 4, 1, 6, 3);
-                    // Red muzzle trim
-                    ctx.fillStyle = '#ff0000';
-                    ctx.fillRect(this.moveDir > 0 ? gx + 18 : gx - 6, 0, 2, 5);
-                }
-
-                // Chaser gets extra spikes on shoulders
-                if (isChaser) {
-                    ctx.fillStyle = '#aaa';
-                    for (const sx of [-20, 20]) {
+                    ctx.fillRect(this.moveDir > 0 ? gx + 10 : gx - 2, 1, 4, 3);
+                    // Red trim
+                    ctx.fillStyle = palette.eye;
+                    ctx.fillRect(this.moveDir > 0 ? gx + 14 : gx - 4, 0, 2, 5);
+                } else if (palette.weapon === 'powerclaw') {
+                    // Powerfist claws
+                    ctx.fillStyle = '#666';
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 1.5;
+                    const gx = this.moveDir > 0 ? 14 : -24;
+                    ctx.beginPath();
+                    ctx.moveTo(gx, -2); ctx.lineTo(gx + 10, -2);
+                    ctx.lineTo(gx + 10, 6); ctx.lineTo(gx, 6); ctx.closePath();
+                    ctx.fill(); ctx.stroke();
+                    // Claw blades
+                    ctx.fillStyle = '#ff4444';
+                    ctx.shadowBlur = 6;
+                    ctx.shadowColor = '#ff4444';
+                    for (let i = 0; i < 3; i++) {
                         ctx.beginPath();
-                        ctx.moveTo(sx, -10); ctx.lineTo(sx + (sx < 0 ? -4 : 4), -18);
-                        ctx.lineTo(sx + (sx < 0 ? -2 : 2), -8); ctx.closePath();
+                        ctx.moveTo(gx + 2 + i * 3, 6);
+                        ctx.lineTo(gx + 3 + i * 3, 12);
+                        ctx.lineTo(gx + 4 + i * 3, 6); ctx.closePath();
                         ctx.fill();
                     }
+                    ctx.shadowBlur = 0;
                 }
 
-                // Legs (mecha-armored)
-                ctx.fillStyle = armor;
+                // Skulls on shoulders for chaser/traitor
+                if (t === 'chaser' || t === 'traitor') {
+                    ctx.fillStyle = '#aaa';
+                    ctx.beginPath();
+                    ctx.arc(-15, -8, 3, 0, Math.PI * 2);
+                    ctx.arc(15, -8, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // HEALTH BAR (for enemies with more than 1 HP)
+                if (this.maxHealth > 1) {
+                    const bw = 30;
+                    const bx = -bw / 2;
+                    const by = this.height / 2 + 5;
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.fillRect(bx, by, bw, 4);
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(bx, by, bw, 4);
+                    ctx.fillStyle = palette.eye;
+                    ctx.fillRect(bx, by, bw * (this.health / this.maxHealth), 4);
+                }
+
+                // Skill cast indicator (small overlay during attack)
+                if (this.skillCast > 0) {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.globalAlpha = this.skillCast / 30;
+                    for (let i = 0; i < 6; i++) {
+                        const a = i * Math.PI / 3 + this.animTimer * 0.1;
+                        ctx.beginPath();
+                        ctx.arc(Math.cos(a) * 20, Math.sin(a) * 20 - 20, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.globalAlpha = 1;
+                }
+
+                // LEGS
+                ctx.fillStyle = palette.armor;
                 ctx.strokeStyle = '#000';
                 ctx.lineWidth = 1.5;
                 ctx.beginPath();
@@ -1847,10 +2435,20 @@
                 ctx.lineTo(12, 32); ctx.lineTo(10, 18); ctx.closePath();
                 ctx.fill(); ctx.stroke();
 
-                // Boot highlights
-                ctx.fillStyle = '#FFD700';
+                // Boot highlights (knee armor)
+                ctx.fillStyle = palette.helmTrim;
                 ctx.fillRect(-11, 30, 8, 1.5);
                 ctx.fillRect(3, 30, 8, 1.5);
+
+                // Plague: dripping ichor from boots
+                if (t === 'plague') {
+                    ctx.fillStyle = '#7fbb44';
+                    for (const bx of [-7, 7]) {
+                        ctx.beginPath();
+                        ctx.ellipse(bx, 32, 1.5, 3, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
             }
 
             drawFloater(ctx, wobble) {
@@ -2171,8 +2769,20 @@
                     game.particles.emitShockwave(cx, cy, '#FF6B35', 12);
                     game.screenShake = Math.min(10, game.screenShake + 4);
                 }
-                const baseScore = this.type === 'boss' ? 1000 : (this.type === 'shooter' || this.type === 'chaser') ? 400 : 300;
-                game.addScore(baseScore, true);
+                // Drop loot (random: ammo or health)
+                if (!isBoss) {
+                    const dropType = Math.random() < 0.6 ? 'ammo' : 'health';
+                    game.collectibles.push(new Collectible(cx, cy, dropType));
+                } else {
+                    // Boss drops multiple
+                    for (let i = 0; i < 5; i++) {
+                        const px = cx + (Math.random() - 0.5) * 80;
+                        const py = cy + (Math.random() - 0.5) * 40;
+                        const dropType = i < 2 ? 'health' : 'ammo';
+                        game.collectibles.push(new Collectible(px, py, dropType));
+                    }
+                }
+                // Track kills (informational, no score effect)
                 game.kills++;
                 AudioManager.play('enemyDeath');
             }
@@ -2225,8 +2835,7 @@
                 this.canvas = document.getElementById('gameCanvas');
                 this.ctx = this.canvas.getContext('2d');
                 this.state = 'menu';
-                this.score = 0;
-                this.lives = 3;
+                this.score = 0; // legacy (still tracked but never displayed)
                 this.level = 1;
                 this.maxLevel = 5;
                 this.highScore = parseInt(localStorage.getItem('cosmicRunnerHighScore')) || 0;
@@ -2241,9 +2850,10 @@
                 this.playerBullets = [];
                 this.enemyBullets = [];
 
-                this.keys = { left: false, right: false, jump: false, shoot: false };
+                this.keys = { left: false, right: false, jump: false, shoot: false, melee: false };
                 this.jumpPressed = false;
                 this.shootPressed = false;
+                this.meleePressed = false;
 
                 this.screenShake = 0;
                 this.starfield = this.createStarfield();
@@ -2423,7 +3033,7 @@
                 document.addEventListener('keydown', (e) => {
                     if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') this.keys.left = true;
                     if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') this.keys.right = true;
-                    if ((e.key === 'w' || e.key === 'W' || e.key === ' ') && !this.jumpPressed) {
+                    if ((e.key === 'w' || e.key === 'W') && !this.jumpPressed) {
                         this.keys.jump = true;
                         this.jumpPressed = true;
                     }
@@ -2431,13 +3041,25 @@
                         this.keys.shoot = true;
                         this.shootPressed = true;
                     }
+                    // Melee: K or Shift
+                    if ((e.key === 'k' || e.key === 'K' || e.key === 'Shift') && !this.meleePressed) {
+                        this.keys.melee = true;
+                        this.meleePressed = true;
+                    }
+                    if (e.key === ' ' && (this.state === 'playing' || this.state === 'paused')) {
+                        // Space = jump (already handled above for 'w'); also resumes/pause toggle below
+                        if (e.key === ' ' && !this.jumpPressed) {
+                            this.keys.jump = true;
+                            this.jumpPressed = true;
+                        }
+                    }
                     if (e.key === 'p' || e.key === 'P') {
                         if (this.state === 'playing') this.pause();
                         else if (this.state === 'paused') this.resume();
                     }
                     if (e.key === ' ' && this.state === 'menu') this.start();
                 });
-                
+
                 document.addEventListener('keyup', (e) => {
                     if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') this.keys.left = false;
                     if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') this.keys.right = false;
@@ -2449,13 +3071,16 @@
                         this.keys.shoot = false;
                         this.shootPressed = false;
                     }
+                    if (e.key === 'k' || e.key === 'K' || e.key === 'Shift') {
+                        this.keys.melee = false;
+                        this.meleePressed = false;
+                    }
                 });
             }
             
             start() {
                 this.state = 'playing';
                 this.score = 0;
-                this.lives = 3;
                 this.level = 1;
                 this.kills = 0;
                 this.combo = 0;
@@ -2536,22 +3161,25 @@
                 this.platforms.push(new Platform(2040, 400, 180, 50));
                 this.platforms.push(new Platform(2270, 450, 280, 50));
                 
-                // Enemies
+                // Enemies - introductory level: Heretic Scout patrols
                 this.enemies.push(new Enemy(520, 430, 'patrol'));
+                this.enemies.push(new Enemy(720, 320, 'cultist'));
                 this.enemies.push(new Enemy(1080, 350, 'patrol'));
+                this.enemies.push(new Enemy(1280, 350, 'cultist'));
                 this.enemies.push(new Enemy(1680, 430, 'patrol'));
+                this.enemies.push(new Enemy(2050, 320, 'cultist'));
                 
                 // Collectibles
                 for (let i = 0; i < 14; i++) {
                     this.collectibles.push(new Collectible(
                         130 + i * 150 + Math.random() * 40,
                         360 + Math.random() * 100,
-                        'star'
+                        'ammo'
                     ));
                 }
-                this.collectibles.push(new Collectible(680, 350, 'planet'));
-                this.collectibles.push(new Collectible(1270, 300, 'planet'));
-                this.collectibles.push(new Collectible(2100, 300, 'planet'));
+                this.collectibles.push(new Collectible(680, 350, 'health'));
+                this.collectibles.push(new Collectible(1270, 300, 'health'));
+                this.collectibles.push(new Collectible(2100, 300, 'health'));
                 
                 // Power-ups
                 this.powerups.push(new PowerUp(900, 380, 'shield'));
@@ -2575,19 +3203,22 @@
                 this.enemies.push(new Enemy(450, 400, 'patrol'));
                 this.enemies.push(new Enemy(750, 280, 'floater'));
                 this.enemies.push(new Enemy(950, 300, 'shooter'));
+                this.enemies.push(new Enemy(1100, 380, 'chaser'));
                 this.enemies.push(new Enemy(1300, 280, 'floater'));
+                this.enemies.push(new Enemy(1500, 320, 'cultist'));
                 this.enemies.push(new Enemy(1700, 400, 'patrol'));
+                this.enemies.push(new Enemy(1900, 350, 'traitor'));
                 
                 for (let i = 0; i < 17; i++) {
                     this.collectibles.push(new Collectible(
                         90 + i * 125 + Math.random() * 35,
                         280 + Math.random() * 150,
-                        'star'
+                        'ammo'
                     ));
                 }
-                this.collectibles.push(new Collectible(570, 320, 'planet'));
-                this.collectibles.push(new Collectible(1100, 270, 'planet'));
-                this.collectibles.push(new Collectible(1650, 300, 'planet'));
+                this.collectibles.push(new Collectible(570, 320, 'health'));
+                this.collectibles.push(new Collectible(1100, 270, 'health'));
+                this.collectibles.push(new Collectible(1650, 300, 'health'));
                 
                 this.powerups.push(new PowerUp(800, 300, 'shield'));
                 this.powerups.push(new PowerUp(1300, 250, 'rapidfire'));
@@ -2613,22 +3244,25 @@
                 this.spikes.push(new Spike(1820, 390, 55));
                 
                 this.enemies.push(new Enemy(450, 430, 'patrol'));
-                this.enemies.push(new Enemy(850, 280, 'floater'));
+                this.enemies.push(new Enemy(700, 280, 'floater'));
+                this.enemies.push(new Enemy(850, 220, 'chaser'));
                 this.enemies.push(new Enemy(1000, 230, 'chaser'));
                 this.enemies.push(new Enemy(1200, 200, 'shooter'));
-                this.enemies.push(new Enemy(1650, 310, 'patrol'));
-                this.enemies.push(new Enemy(2020, 280, 'chaser'));
+                this.enemies.push(new Enemy(1400, 280, 'cultist'));
+                this.enemies.push(new Enemy(1600, 320, 'traitor'));
+                this.enemies.push(new Enemy(1820, 280, 'chaser'));
+                this.enemies.push(new Enemy(2020, 280, 'traitor'));
                 
                 for (let i = 0; i < 19; i++) {
                     this.collectibles.push(new Collectible(
                         70 + i * 110 + Math.random() * 28,
                         260 + Math.random() * 170,
-                        'star'
+                        'ammo'
                     ));
                 }
-                this.collectibles.push(new Collectible(600, 320, 'planet'));
-                this.collectibles.push(new Collectible(1190, 210, 'planet'));
-                this.collectibles.push(new Collectible(1880, 250, 'planet'));
+                this.collectibles.push(new Collectible(600, 320, 'health'));
+                this.collectibles.push(new Collectible(1190, 210, 'health'));
+                this.collectibles.push(new Collectible(1880, 250, 'health'));
                 
                 this.powerups.push(new PowerUp(700, 260, 'rapidfire'));
                 this.powerups.push(new PowerUp(1250, 220, 'shield'));
@@ -2660,26 +3294,29 @@
                 
                 this.enemies.push(new Enemy(380, 400, 'patrol'));
                 this.enemies.push(new Enemy(520, 360, 'shooter'));
-                this.enemies.push(new Enemy(760, 210, 'floater'));
+                this.enemies.push(new Enemy(720, 220, 'floater'));
+                this.enemies.push(new Enemy(820, 230, 'cultist'));
                 this.enemies.push(new Enemy(940, 280, 'chaser'));
                 this.enemies.push(new Enemy(1140, 220, 'patrol'));
                 this.enemies.push(new Enemy(1320, 260, 'shooter'));
+                this.enemies.push(new Enemy(1450, 290, 'traitor'));
                 this.enemies.push(new Enemy(1600, 290, 'floater'));
                 this.enemies.push(new Enemy(1780, 220, 'chaser'));
                 this.enemies.push(new Enemy(1950, 280, 'patrol'));
+                this.enemies.push(new Enemy(2100, 280, 'obliter'));
                 this.enemies.push(new Enemy(2240, 310, 'floater'));
                 
                 for (let i = 0; i < 24; i++) {
                     this.collectibles.push(new Collectible(
                         55 + i * 90 + Math.random() * 28,
                         190 + Math.random() * 190,
-                        'star'
+                        'ammo'
                     ));
                 }
-                this.collectibles.push(new Collectible(640, 260, 'planet'));
-                this.collectibles.push(new Collectible(1120, 180, 'planet'));
-                this.collectibles.push(new Collectible(1420, 320, 'planet'));
-                this.collectibles.push(new Collectible(1980, 250, 'planet'));
+                this.collectibles.push(new Collectible(640, 260, 'health'));
+                this.collectibles.push(new Collectible(1120, 180, 'health'));
+                this.collectibles.push(new Collectible(1420, 320, 'health'));
+                this.collectibles.push(new Collectible(1980, 250, 'health'));
                 
                 this.powerups.push(new PowerUp(650, 220, 'shield'));
                 this.powerups.push(new PowerUp(1100, 170, 'rapidfire'));
@@ -2721,12 +3358,19 @@
                 
                 // Boss
                 this.enemies.push(new Enemy(1900, 120, 'boss'));
-                
+
+                // Pit forces
                 this.enemies.push(new Enemy(330, 440, 'patrol'));
                 this.enemies.push(new Enemy(560, 280, 'floater'));
+                this.enemies.push(new Enemy(720, 280, 'cultist'));
                 this.enemies.push(new Enemy(850, 350, 'chaser'));
                 this.enemies.push(new Enemy(990, 220, 'shooter'));
+                this.enemies.push(new Enemy(1140, 280, 'traitor'));
                 this.enemies.push(new Enemy(1220, 290, 'patrol'));
+                this.enemies.push(new Enemy(1400, 290, 'plague'));
+                this.enemies.push(new Enemy(1560, 240, 'chaser'));
+                this.enemies.push(new Enemy(1720, 290, 'obliter'));
+                this.enemies.push(new Enemy(2050, 220, 'traitor'));
                 this.enemies.push(new Enemy(1460, 220, 'floater'));
                 this.enemies.push(new Enemy(1640, 220, 'chaser'));
                 this.enemies.push(new Enemy(2060, 220, 'patrol'));
@@ -2735,14 +3379,14 @@
                     this.collectibles.push(new Collectible(
                         45 + i * 78 + Math.random() * 24,
                         170 + Math.random() * 210,
-                        'star'
+                        'ammo'
                     ));
                 }
-                this.collectibles.push(new Collectible(560, 250, 'planet'));
-                this.collectibles.push(new Collectible(980, 170, 'planet'));
-                this.collectibles.push(new Collectible(1400, 170, 'planet'));
-                this.collectibles.push(new Collectible(1830, 170, 'planet'));
-                this.collectibles.push(new Collectible(2200, 250, 'planet'));
+                this.collectibles.push(new Collectible(560, 250, 'health'));
+                this.collectibles.push(new Collectible(980, 170, 'health'));
+                this.collectibles.push(new Collectible(1400, 170, 'health'));
+                this.collectibles.push(new Collectible(1830, 170, 'health'));
+                this.collectibles.push(new Collectible(2200, 250, 'health'));
                 
                 this.powerups.push(new PowerUp(500, 200, 'rapidfire'));
                 this.powerups.push(new PowerUp(950, 180, 'shield'));
@@ -2752,18 +3396,11 @@
             }
             
             addScore(points, isKill = false) {
+                // Legacy method retained for combo tracking only; no point scoring.
                 if (isKill) {
                     this.combo++;
                     if (this.combo > this.maxCombo) this.maxCombo = this.combo;
                     this.comboTimer = 120;
-                    points *= Math.min(this.combo, 5);
-                }
-                
-                this.score += points;
-                
-                if (Math.floor(this.score / 5000) > Math.floor((this.score - points) / 5000)) {
-                    this.lives++;
-                    this.particles.emit(this.canvas.width/2, 50, '#ff4444', 25);
                 }
             }
             
@@ -2804,15 +3441,39 @@
                 if (this.keys.shoot) {
                     this.player.shoot(this);
                 }
-                
-                // Update player
+
+                // Melee attack
+                if (this.keys.melee) {
+                    this.player.melee(this);
+                }
+
+                // Player update
                 const res = this.player.update(this.keys, this.platforms, this);
                 if (res === 'death') {
                     AudioManager.play('death');
                     this.gameOver();
                     return;
                 }
-                
+
+                // Melee hit detection - check enemies in attack arc
+                if (this.player.meleeActive > 0 && !this.player.meleeHit) {
+                    const px = this.player.x + (this.player.facingRight ? this.player.width : 0);
+                    const py = this.player.y + this.player.height/2;
+                    let hitSomething = false;
+                    for (let e of this.enemies) {
+                        if (!e.alive) continue;
+                        const dx = e.x + e.width/2 - px;
+                        const dy = e.y + e.height/2 - py;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < 75 && this.player.facingRight === (dx > 0)) {
+                            e.hit(this, 2);
+                            hitSomething = true;
+                            break;  // single hit per swing
+                        }
+                    }
+                    if (hitSomething) this.player.meleeHit = true;
+                }
+
                 // Camera
                 const target = this.player.x - this.canvas.width / 3;
                 this.cameraX += (target - this.cameraX) * 0.1;
@@ -2823,9 +3484,11 @@
                     c.update();
                     if (!c.collected && c.checkCollision(this.player)) {
                         c.collected = true;
-                        this.addScore(c.type === 'star' ? 100 : 500);
+                        this.player.applyPowerUp(c.type);  // 'ammo' or 'health'
                         AudioManager.play('collect');
-                        this.particles.emit(c.x, c.y, c.type === 'star' ? '#FFE66D' : '#8B5CF6', 18);
+                        const color = c.type === 'health' ? '#FF2222' : '#FFE66D';
+                        this.particles.emit(c.x, c.y, color, 18);
+                        this.particles.emitShockwave(c.x, c.y, color, 8);
                     }
                 });
                 
@@ -2843,7 +3506,7 @@
                 
                 // Enemies
                 this.enemies.forEach(e => {
-                    e.update(this.player.x, this);
+                    e.update(this.player.x, this.player.y, this);
                     if (e.alive && e.checkCollision(this.player)) {
                         if (this.player.vy > 0 && this.player.y + this.player.height < e.y + e.height/2) {
                             e.hit(this);
@@ -2942,22 +3605,23 @@
             
             levelComplete() {
                 AudioManager.play('levelUp');
-                this.addScore(1000);
-                
+                // Bonus heal + ammo refill on level up
+                this.player.hp = Math.min(this.player.hp + 2, this.player.maxHP);
+                this.player.ammo = Math.min(this.player.ammo + 6, this.player.maxAmmo);
+                this.particles.emit(this.player.x + this.player.width/2, this.player.y + this.player.height/2, '#FFD700', 40);
+
                 if (this.level >= this.maxLevel) {
                     this.state = 'victory';
-                    if (this.score > this.highScore) {
-                        this.highScore = this.score;
-                        localStorage.setItem('cosmicRunnerHighScore', this.highScore);
-                    }
-                    document.getElementById('victoryScore').textContent = this.score;
+                    this.highScore = this.kills; // legacy; show kills as legacy highscore
+                    localStorage.setItem('cosmicRunnerHighScore', this.kills);
+                    document.getElementById('victoryScore').textContent = this.kills;
                     document.getElementById('victoryKills').textContent = this.kills;
                     document.getElementById('victoryCombo').textContent = this.maxCombo;
-                    document.getElementById('highScoreVictory').textContent = this.highScore;
+                    document.getElementById('highScoreVictory').textContent = this.kills;
                     document.getElementById('victoryScreen').classList.remove('hidden');
                 } else {
                     this.state = 'levelComplete';
-                    document.getElementById('levelScore').textContent = this.score;
+                    document.getElementById('levelScore').textContent = this.kills;
                     document.getElementById('levelKills').textContent = this.kills;
                     document.getElementById('levelCombo').textContent = this.maxCombo;
                     document.getElementById('levelCompleteScreen').classList.remove('hidden');
@@ -3091,29 +3755,68 @@
             drawHUD(ctx) {
                 ctx.save();
 
-                // Score panel (top-left, gothic frame)
+                // ===== HP + AMMO panel (top-left, gothic frame) =====
                 ctx.shadowBlur = 0;
-                const pW = 200, pH = 50;
-                ctx.fillStyle = 'rgba(10, 5, 20, 0.75)';
-                ctx.strokeStyle = '#8B5CF6';
+                const pW = 220, pH = 56;
+                ctx.fillStyle = 'rgba(10, 5, 20, 0.8)';
+                ctx.strokeStyle = '#8B0000';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.roundRect(10, 12, pW, pH, 4);
                 ctx.fill(); ctx.stroke();
-                // Corner accents
                 ctx.fillStyle = '#FFD700';
-                for (const [x, y] of [[15, 17], [pW + 5, 17], [15, 57], [pW + 5, 57]]) {
+                for (const [x, y] of [[15, 17], [pW + 5, 17], [15, 63], [pW + 5, 63]]) {
                     ctx.fillRect(x, y, 4, 4);
                 }
 
-                // Score
-                ctx.font = 'bold 20px Orbitron';
-                ctx.fillStyle = '#FFE66D';
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = '#FFE66D';
+                // HP label
+                ctx.font = 'bold 10px Orbitron';
+                ctx.fillStyle = '#FF4444';
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = '#FF4444';
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(`ĐIỂM: ${this.score.toString().padStart(6, '0')}`, 28, 36);
+                ctx.fillText('SỨC KHỎE', 26, 24);
+
+                // HP hearts (filled, half, empty)
+                for (let i = 0; i < this.player.maxHP; i++) {
+                    const filled = i < this.player.hp;
+                    const halfFilled = i === Math.floor(this.player.hp) && (this.player.hp % 1) !== 0;
+                    this.drawHeart(ctx, 26 + i * 18, 39, 8, filled, halfFilled);
+                }
+
+                // Ammo label + bolts
+                ctx.font = 'bold 10px Orbitron';
+                ctx.fillStyle = '#FFE66D';
+                ctx.shadowColor = '#FFE66D';
+                ctx.fillText('ĐẠN', 26, 56);
+
+                // Ammo bolts (small bullet icons - 12 slots)
+                for (let i = 0; i < this.player.maxAmmo; i++) {
+                    const has = i < this.player.ammo;
+                    ctx.fillStyle = has ? '#FFE66D' : '#332B00';
+                    ctx.strokeStyle = has ? '#000' : '#1a1500';
+                    ctx.lineWidth = 0.8;
+                    ctx.shadowBlur = has ? 4 : 0;
+                    ctx.shadowColor = '#FFE66D';
+                    ctx.beginPath();
+                    ctx.fillRect(70 + i * 11, 51, 8, 5);
+                    ctx.strokeRect(70 + i * 11, 51, 8, 5);
+                    ctx.shadowBlur = 0;
+                }
+
+                // Empty ammo warning
+                if (this.player.ammo === 0) {
+                    ctx.font = 'bold 11px Orbitron';
+                    ctx.fillStyle = '#FF2222';
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = '#FF2222';
+                    ctx.textAlign = 'center';
+                    const pulse = (Math.sin(this.time / 150) + 1) * 0.5;
+                    ctx.globalAlpha = 0.6 + pulse * 0.4;
+                    ctx.fillText('◇ CẬN CHIẾN ◇', this.canvas.width/2, 90);
+                    ctx.globalAlpha = 1;
+                }
 
                 // Level (top-center with gothic frame)
                 ctx.shadowBlur = 0;
@@ -3137,43 +3840,86 @@
                 ctx.textAlign = 'center';
                 ctx.fillText(`MÀN ${this.level}`, this.canvas.width / 2, 36);
 
-                // Lives (top-right) - gothic frame
+                // Melee ready indicator (top-right) - gothic frame
                 ctx.shadowBlur = 0;
-                const lhW = 110;
-                ctx.fillStyle = 'rgba(10, 5, 20, 0.75)';
-                ctx.strokeStyle = '#FF4444';
+                const lhW = 130, lhH = 56;
+                const lhX = this.canvas.width - lhW - 10;
+                ctx.fillStyle = 'rgba(10, 5, 20, 0.8)';
+                ctx.strokeStyle = this.player.meleeCooldown <= 0 ? '#FFD700' : '#553300';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.roundRect(this.canvas.width - lhW - 10, 12, lhW, 50, 4);
+                ctx.roundRect(lhX, 12, lhW, lhH, 4);
                 ctx.fill(); ctx.stroke();
                 ctx.fillStyle = '#FFD700';
-                ctx.fillRect(this.canvas.width - lhW - 5, 17, 4, 4);
-                ctx.fillRect(this.canvas.width - 15, 17, 4, 4);
-                ctx.fillRect(this.canvas.width - lhW - 5, 57, 4, 4);
-                ctx.fillRect(this.canvas.width - 15, 57, 4, 4);
+                ctx.fillRect(lhX + 5, 17, 4, 4);
+                ctx.fillRect(lhX + lhW - 9, 17, 4, 4);
+                ctx.fillRect(lhX + 5, lhH + 7, 4, 4);
+                ctx.fillRect(lhX + lhW - 9, lhH + 7, 4, 4);
 
-                for (let i = 0; i < this.lives; i++) {
-                    this.drawHeart(ctx, this.canvas.width - 25 - i * 28, 36, 11);
+                // Label
+                ctx.font = 'bold 10px Orbitron';
+                ctx.fillStyle = '#FFD700';
+                ctx.shadowBlur = 6;
+                ctx.shadowColor = '#FFD700';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('CẬN CHIẾN', lhX + lhW/2, 24);
+
+                // Sword icon
+                const ready = this.player.meleeCooldown <= 0;
+                const sx = lhX + lhW/2, sy = 44;
+                ctx.strokeStyle = ready ? '#FFD700' : '#553300';
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(sx - 8, sy + 8); ctx.lineTo(sx + 8, sy - 8); ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(sx - 4, sy + 12); ctx.lineTo(sx + 12, sy - 4); ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(sx - 3, sy + 4); ctx.lineTo(sx + 4, sy - 3); ctx.stroke();
+
+                if (!ready) {
+                    // Cooldown dial
+                    const pct = this.player.meleeCooldown / this.player.meleeCooldownMax;
+                    ctx.strokeStyle = '#FFD700';
+                    ctx.lineWidth = 3;
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = '#FFD700';
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, 14, -Math.PI/2, -Math.PI/2 + Math.PI * 2 * (1 - pct));
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                    ctx.font = 'bold 11px Orbitron';
+                    ctx.fillStyle = '#FFD700';
+                    ctx.fillText((this.player.meleeCooldown / 60).toFixed(1) + 's', sx, sy);
+                } else {
+                    // READY glow
+                    ctx.shadowBlur = 14;
+                    ctx.shadowColor = '#FFD700';
+                    ctx.fillStyle = '#FFD700';
+                    ctx.font = 'bold 12px Orbitron';
+                    ctx.fillText('SẴN SÀNG', sx, sy + 18);
+                    ctx.shadowBlur = 0;
                 }
 
-                // Combo (left, below score)
+                // Kills (left, below HP/Ammo panel)
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = '#ff4444';
+                ctx.font = 'bold 14px Orbitron';
+                ctx.fillStyle = '#aaa';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`☠ Kills: ${this.kills}`, 28, 86);
+
+                // Combo (right-side, below melee panel)
                 if (this.combo > 1) {
-                    ctx.font = 'bold 20px Orbitron';
+                    ctx.font = 'bold 16px Orbitron';
                     ctx.fillStyle = '#FF6B35';
                     ctx.shadowBlur = 12;
                     ctx.shadowColor = '#FF6B35';
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(`COMBO x${this.combo}`, 28, 82);
+                    ctx.textAlign = 'right';
+                    ctx.fillText(`x${this.combo} Combo`, this.canvas.width - 28, 86);
                 }
-
-                // Kills (right side, below lives)
-                ctx.font = 'bold 16px Orbitron';
-                ctx.fillStyle = '#aaa';
-                ctx.shadowBlur = 8;
-                ctx.shadowColor = '#ff4444';
-                ctx.textAlign = 'right';
-                ctx.fillText(`☠ ${this.kills}`, this.canvas.width - 24, 82);
 
                 // Power-up indicators (bottom-left)
                 let indicatorY = this.canvas.height - 30;
@@ -3296,18 +4042,35 @@
                 ctx.restore();
             }
             
-            drawHeart(ctx, x, y, size) {
+            drawHeart(ctx, x, y, size, filled = true, halfFilled = false) {
                 ctx.save();
-                ctx.fillStyle = '#ff4444';
-                ctx.shadowBlur = 8;
-                ctx.shadowColor = '#ff4444';
+                // Outline
                 ctx.beginPath();
                 ctx.moveTo(x, y + size/4);
                 ctx.bezierCurveTo(x, y, x - size/2, y, x - size/2, y + size/4);
                 ctx.bezierCurveTo(x - size/2, y + size/2, x, y + size*0.75, x, y + size);
                 ctx.bezierCurveTo(x, y + size*0.75, x + size/2, y + size/2, x + size/2, y + size/4);
                 ctx.bezierCurveTo(x + size/2, y, x, y, x, y + size/4);
-                ctx.fill();
+                ctx.closePath();
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                if (filled) {
+                    ctx.fillStyle = halfFilled ? '#FF8888' : '#FF2222';
+                    ctx.shadowBlur = halfFilled ? 4 : 8;
+                    ctx.shadowColor = '#FF2222';
+                    ctx.fill();
+                } else {
+                    ctx.fillStyle = 'rgba(80, 10, 10, 0.5)';
+                    ctx.fill();
+                }
+                // Heavy outline overlay (Blasphemous)
+                if (filled && !halfFilled) {
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
                 ctx.restore();
             }
         }
