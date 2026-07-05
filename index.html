@@ -797,18 +797,15 @@
             }
             
             jetpack(on) {
-                if (on) {
-                    if (this.jetpackFuel > 0 && this.hasJetpack) {
-                        this.vy = Math.max(this.vy - 0.4, -8);
-                        this.isJetpacking = true;
-                        this.jetpackFuel--;
-                        return true;
-                    }
-                    return false;
-                } else {
-                    this.isJetpacking = false;
-                    return false;
+                if (on && this.jetpackFuel > 0 && this.hasJetpack) {
+                    this.vy -= 1.5;
+                    if (this.vy < -14) this.vy = -14;
+                    this.isJetpacking = true;
+                    this.jetpackFuel--;
+                    return true;
                 }
+                this.isJetpacking = false;
+                return false;
             }
             
             shoot(game) {
