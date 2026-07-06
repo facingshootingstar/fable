@@ -2977,23 +2977,26 @@
             }
 
             loadAssets() {
-                // Map asset keys to file paths (relative to index.html)
+                // Map asset keys to file paths (relative to index.html).
+                // Use cache-bust v=2 to force GitHub Pages CDN to drop the stale
+                // version that was built up across the previous 9 deploys.
+                const cb = '?v=2';
                 const manifest = {
                     // Background skies (night variants)
-                    'sky_1': 'assets/bumpy_sky-night_01.png',
-                    'sky_2': 'assets/bumpy_sky-night_02.png',
-                    'sky_3': 'assets/bumpy_sky-night_03.png',
-                    'sky_4': 'assets/bumpy_sky-night_04.png',
-                    'sky_starbase': 'assets/starbasesnow.png',
+                    'sky_1': 'assets/bumpy_sky-night_01.png' + cb,
+                    'sky_2': 'assets/bumpy_sky-night_02.png' + cb,
+                    'sky_3': 'assets/bumpy_sky-night_03.png' + cb,
+                    'sky_4': 'assets/bumpy_sky-night_04.png' + cb,
+                    'sky_starbase': 'assets/starbasesnow.png' + cb,
                     // Platform textures
-                    'tex_stone_grey': 'assets/stone_tiles_grey.png',
-                    'tex_stone_wall': 'assets/stone_wall_1.png',
-                    'tex_brick_wall': 'assets/brick_wall_1.png',
-                    'tex_cobble': 'assets/cobble_grey.png',
-                    'tex_metal': 'assets/metal_plate.png',
-                    'tex_rockface': 'assets/rockface_grey.png',
+                    'tex_stone_grey': 'assets/stone_tiles_grey.png' + cb,
+                    'tex_stone_wall': 'assets/stone_wall_1.png' + cb,
+                    'tex_brick_wall': 'assets/brick_wall_1.png' + cb,
+                    'tex_cobble': 'assets/cobble_grey.png' + cb,
+                    'tex_metal': 'assets/metal_plate.png' + cb,
+                    'tex_rockface': 'assets/rockface_grey.png' + cb,
                     // Character sprites
-                    'char_knight': 'assets/char_knight.png',
+                    'char_knight': 'assets/char_knight.png' + cb,
                 };
                 const keys = Object.keys(manifest);
                 let loadedCount = 0;
