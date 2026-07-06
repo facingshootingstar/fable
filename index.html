@@ -794,7 +794,8 @@
 
         // Player
         class Player {
-            constructor(x, y) {
+            constructor(x, y, gameRef) {
+                this.game = gameRef;
                 this.x = x; this.y = y;
                 this.width = 50; this.height = 60;
                 this.vx = 0; this.vy = 0;
@@ -1045,6 +1046,41 @@
             
             draw(ctx) {
                 ctx.save();
+
+                // ===== TRY USING REAL KNIGHT SPRITE (CC0 asset) =====
+                const knightImg = this.game && this.game.assets
+                    && this.game.assets.char_knight;
+                const usingSprite = knightImg && knightImg.complete && knightImg.naturalWidth > 0;
+
+                if (usingSprite) {
+                    const alpha0 = (this.isInvincible && Math.floor(this.invincibleTimer / 4) % 2 === 0) ? 0.5 : 1;
+                    ctx.globalAlpha = alpha0;
+                    const targetW = this.width + 14;
+                    const targetH = this.height + 14;
+                    const cx = this.x + this.width / 2;
+                    const cy = this.y + this.height / 2;
+                    // Sprite is 13x18, scaled up
+                    const scale = Math.min(targetW / knightImg.naturalWidth, targetH / knightImg.naturalHeight) * 4;
+                    const dw = knightImg.naturalWidth * scale * 1.5;
+                    const dh = knightImg.naturalHeight * scale * 1.5;
+                    ctx.imageSmoothingEnabled = false;  // pixel art crispness
+                    // Shadow underneath
+                    ctx.shadowBlur = 18;
+                    ctx.shadowColor = this.hasShield ? '#00FFFF' : (this.hasSpeed ? '#FFE66D' : '#FF3333');
+                    if (this.faceDir === -1) {
+                        ctx.save();
+                        ctx.translate(cx, 0);
+                        ctx.scale(-1, 1);
+                        ctx.drawImage(knightImg, -dw / 2, cy - dh / 2, dw, dh);
+                        ctx.restore();
+                    } else {
+                        ctx.drawImage(knightImg, cx - dw / 2, cy - dh / 2, dw, dh);
+                    }
+                    ctx.shadowBlur = 0;
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
+                    return;
+                }
 
                 // Flicker when invincible
                 let alpha = 1;
@@ -1391,16 +1427,16 @@
                     drawY += Math.sin(time / 500 + this.floatOffset) * 5;
                 }
 
-                let mainColor, accentColor, topAccent;
+                let mainColor, accentColor, topAccent, texKey;
                 switch(this.type) {
-                    case 'static':   mainColor='#5C3A2E'; accentColor='#C9A87A'; topAccent='#FFE66D'; break;
-                    case 'moving':   mainColor='#1F3A5C'; accentColor='#7099C2'; topAccent='#88E0FF'; break;
+                    case 'static':   mainColor='#5C3A2E'; accentColor='#C9A87A'; topAccent='#FFE66D'; texKey='tex_stone_grey'; break;
+                    case 'moving':   mainColor='#1F3A5C'; accentColor='#7099C2'; topAccent='#88E0FF'; texKey='tex_metal'; break;
                     case 'bouncy':
-                        mainColor='#1F5C3A'; accentColor='#7AC29A'; topAccent='#AAFF88';
+                        mainColor='#1F5C3A'; accentColor='#7AC29A'; topAccent='#AAFF88'; texKey='tex_cobble';
                         ctx.translate(0, Math.sin(this.bouncePhase) * 3);
                         break;
-                    case 'floating': mainColor='#5C2E1F'; accentColor='#C28C7A'; topAccent='#FF8866'; break;
-                    default:         mainColor='#3A2E5C'; accentColor='#A87AC2'; topAccent='#DDAAFF';
+                    case 'floating': mainColor='#5C2E1F'; accentColor='#C28C7A'; topAccent='#FF8866'; texKey='tex_stone_wall'; break;
+                    default:         mainColor='#3A2E5C'; accentColor='#A87AC2'; topAccent='#DDAAFF'; texKey='tex_stone_grey';
                 }
 
                 // Outer dark drop shadow (Blasphemous: heavy outlines)
@@ -1420,6 +1456,30 @@
                 ctx.rect(this.x, drawY, this.width, this.height);
                 ctx.fill();
                 ctx.shadowBlur = 0;
+
+                // Overlay real stone texture (tiled) - clipped to platform bounds
+                const tex = game.assets && game.assets[texKey];
+                if (tex && tex.complete && tex.naturalWidth > 0) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(this.x + 3, drawY + 3, this.width - 6, this.height - 6);
+                    ctx.clip();
+                    // Tile the texture across the platform
+                    const texW = tex.naturalWidth;
+                    const texH = tex.naturalHeight;
+                    for (let tx = this.x - ((this.x) % texW); tx < this.x + this.width; tx += texW) {
+                        for (let ty = drawY - ((drawY) % texH); ty < drawY + this.height; ty += texH) {
+                            ctx.drawImage(tex, tx, ty);
+                        }
+                    }
+                    // Darken the texture lightly so gothic color scheme dominates but texture details show
+                    ctx.fillStyle = 'rgba(20, 10, 5, 0.40)';
+                    ctx.fillRect(this.x, drawY, this.width, this.height);
+                    // Tint with the platform's main color (subtle warmth)
+                    ctx.fillStyle = mainColor + '30';
+                    ctx.fillRect(this.x, drawY, this.width, this.height);
+                    ctx.restore();
+                }
 
                 // Heavy black outer outline
                 ctx.strokeStyle = '#000';
@@ -2862,6 +2922,11 @@
                 this.cameraX = 0;
                 this.levelWidth = 2800;
 
+                // Load assets (textures for backgrounds and platforms)
+                this.assets = {};
+                this.assetsLoaded = false;
+                this.loadAssets();
+
                 // Space environment
                 this.meteors = [];
                 this.shootingStars = [];
@@ -2905,6 +2970,44 @@
                     });
                 }
                 return stars;
+            }
+
+            loadAssets() {
+                // Map asset keys to file paths (relative to index.html)
+                const manifest = {
+                    // Background skies (night variants)
+                    'sky_1': 'assets/bumpy_sky-night_01.png',
+                    'sky_2': 'assets/bumpy_sky-night_02.png',
+                    'sky_3': 'assets/bumpy_sky-night_03.png',
+                    'sky_4': 'assets/bumpy_sky-night_04.png',
+                    'sky_starbase': 'assets/starbasesnow.png',
+                    // Platform textures
+                    'tex_stone_grey': 'assets/stone_tiles_grey.png',
+                    'tex_stone_wall': 'assets/stone_wall_1.png',
+                    'tex_brick_wall': 'assets/brick_wall_1.png',
+                    'tex_cobble': 'assets/cobble_grey.png',
+                    'tex_metal': 'assets/metal_plate.png',
+                    'tex_rockface': 'assets/rockface_grey.png',
+                    // Character sprites
+                    'char_knight': 'assets/dark_knight.png',
+                    'char_dracovir': 'assets/dracovir.png',
+                };
+                const keys = Object.keys(manifest);
+                let loadedCount = 0;
+                for (const key of keys) {
+                    const img = new Image();
+                    img.onload = () => {
+                        loadedCount++;
+                        if (loadedCount === keys.length) this.assetsLoaded = true;
+                    };
+                    img.onerror = () => {
+                        console.warn('Asset failed: ' + manifest[key]);
+                        loadedCount++;
+                        if (loadedCount === keys.length) this.assetsLoaded = true;
+                    };
+                    img.src = manifest[key];
+                    this.assets[key] = img;
+                }
             }
 
             createSpaceEnvironment() {
@@ -3143,7 +3246,7 @@
                     case 5: this.genLevel5(); break;
                 }
                 
-                this.player = new Player(80, 400);
+                this.player = new Player(80, 400, this);
                 this.cameraX = 0;
             }
             
@@ -3651,15 +3754,40 @@
                     );
                 }
                 
-                // Background
-                const bg = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-                bg.addColorStop(0, '#0F0C29');
-                bg.addColorStop(0.5, '#302B63');
-                bg.addColorStop(1, '#24243E');
-                ctx.fillStyle = bg;
+                // Background: use a real texture (parallax-tiled)
+                const skyKeys = ['sky_1', 'sky_2', 'sky_3', 'sky_4', 'sky_starbase'];
+                let skyKey = skyKeys[(this.level - 1) % skyKeys.length];
+                if (!this.assets[skyKey] || !this.assets[skyKey].complete || this.assets[skyKey].naturalWidth === 0) {
+                    // Fallback: solid gradient if asset not yet loaded
+                    const bg = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+                    bg.addColorStop(0, '#0a0612');
+                    bg.addColorStop(0.5, '#1a0e2e');
+                    bg.addColorStop(1, '#0a0408');
+                    ctx.fillStyle = bg;
+                    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                } else {
+                    const img = this.assets[skyKey];
+                    const tileW = img.naturalWidth;       // 1024
+                    const tileH = img.naturalHeight;      // 512
+                    // Stretch sky vertically to fill canvas
+                    const drawH = this.canvas.height;
+                    // Compute scale to make tile match canvas height (preserving aspect)
+                    const scale = drawH / tileH;
+                    const scaledW = tileW * scale;
+                    // Compute parallax offset for horizontal scrolling
+                    let offsetX = -(this.cameraX * 0.4) % scaledW;
+                    if (offsetX > 0) offsetX -= scaledW;
+                    // Draw enough tiles to cover the screen + extra
+                    for (let x = offsetX; x < this.canvas.width; x += scaledW) {
+                        ctx.drawImage(img, x, 0, scaledW, drawH);
+                    }
+                }
+
+                // Dark overlay for gothic mood + readability (subtle so textures remain visible)
+                ctx.fillStyle = 'rgba(10, 5, 20, 0.12)';
                 ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-                
-                // Stars
+
+                // Stars (sparkle overlay - reduced density since sky already has stars)
                 this.starfield.forEach(s => {
                     const px = s.x - this.cameraX * s.speed;
                     const wx = ((px % this.canvas.width) + this.canvas.width) % this.canvas.width;
@@ -3669,7 +3797,7 @@
                         ctx.shadowBlur = 14;
                         ctx.shadowColor = s.color;
                         ctx.fillStyle = s.color;
-                        ctx.globalAlpha = t;
+                        ctx.globalAlpha = t * 0.5;  // half intensity - sky already has stars
                         ctx.beginPath();
                         ctx.arc(wx, s.y, s.size, 0, Math.PI * 2);
                         ctx.fill();
@@ -3687,47 +3815,9 @@
                         ctx.fill();
                         ctx.globalAlpha = 1;
                     }
-                });
-                
-                // Nebula
-                const nebula = ctx.createRadialGradient(
-                    this.canvas.width/2 - this.cameraX * 0.15,
-                    this.canvas.height/2, 0,
-                    this.canvas.width/2 - this.cameraX * 0.15,
-                    this.canvas.height/2, 350
-                );
-                nebula.addColorStop(0, 'rgba(139, 92, 246, 0.08)');
-                nebula.addColorStop(0.5, 'rgba(0, 212, 255, 0.04)');
-                nebula.addColorStop(1, 'transparent');
-                ctx.fillStyle = nebula;
-                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+});
 
-                // Extra nebula clouds (pink + teal) for depth
-                const nebulaA = ctx.createRadialGradient(
-                    this.canvas.width * 0.25 - this.cameraX * 0.1,
-                    this.canvas.height * 0.35, 0,
-                    this.canvas.width * 0.25 - this.cameraX * 0.1,
-                    this.canvas.height * 0.35, 260
-                );
-                nebulaA.addColorStop(0, 'rgba(255, 107, 182, 0.10)');
-                nebulaA.addColorStop(0.6, 'rgba(255, 107, 182, 0.04)');
-                nebulaA.addColorStop(1, 'transparent');
-                ctx.fillStyle = nebulaA;
-                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-                const nebulaB = ctx.createRadialGradient(
-                    this.canvas.width * 0.75 - this.cameraX * 0.2,
-                    this.canvas.height * 0.65, 0,
-                    this.canvas.width * 0.75 - this.cameraX * 0.2,
-                    this.canvas.height * 0.65, 300
-                );
-                nebulaB.addColorStop(0, 'rgba(0, 255, 200, 0.08)');
-                nebulaB.addColorStop(0.6, 'rgba(0, 255, 200, 0.03)');
-                nebulaB.addColorStop(1, 'transparent');
-                ctx.fillStyle = nebulaB;
-                ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-                // Meteors and shooting stars (parallax)
+// Meteors and shooting stars (parallax)
                 this.drawSpaceEnvironment(ctx);
                 
                 if (this.state === 'playing' || this.state === 'paused') {
