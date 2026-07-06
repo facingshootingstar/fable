@@ -35,14 +35,8 @@ All assets used in this game are CC0 (Creative Commons Zero v1.0 Universal) Publ
 
 ## Character Sprites
 
-- **dark_knight.png** — Knight spritesheet (dark_knight) by marqueeplier  
-  https://opengameart.org/content/knight-spritesheet  
-  CC0 — Public Domain
-
-- **dracovir.png** — Knight spritesheet (dracovir) by marqueeplier  
-  CC0 — Public Domain
-
-- **knight_spritesheet.png** — Knight spritesheet by marqueeplier  
+- **char_knight.png** — Pixel Knight 32x32 (single frame, no animation) by PolygonDan  
+  https://opengameart.org/content/pixel-knight-32x32  
   CC0 — Public Domain
 
 ---

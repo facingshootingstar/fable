@@ -186,6 +186,12 @@ setTimeout(() => {
         checks.metalTexLoaded = !!game.assets?.tex_metal && game.assets.tex_metal.complete && game.assets.tex_metal.naturalWidth > 0;
         checks.cobbleTexLoaded = !!game.assets?.tex_cobble && game.assets.tex_cobble.complete && game.assets.tex_cobble.naturalWidth > 0;
         checks.wallTexLoaded = !!game.assets?.tex_stone_wall && game.assets.tex_stone_wall.complete && game.assets.tex_stone_wall.naturalWidth > 0;
+        // CRITICAL: player sprite MUST be a single-frame (small width/height),
+        // not a spritesheet which would render multiple poses at once and look broken.
+        const knight = game.assets?.char_knight;
+        checks.charKnightSingleFrame = !!knight && knight.naturalWidth <= 64 && knight.naturalHeight <= 64
+            && knight.naturalWidth * knight.naturalHeight < 10000;
+        checks.charKnightDims = knight ? `${knight.naturalWidth}x${knight.naturalHeight}` : 'missing';
 
         // Step 13: Verify no 'score' based UI text
         const uiHtml = dom.window.document.documentElement.outerHTML;

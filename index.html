@@ -1050,31 +1050,35 @@
                 // ===== TRY USING REAL KNIGHT SPRITE (CC0 asset) =====
                 const knightImg = this.game && this.game.assets
                     && this.game.assets.char_knight;
-                const usingSprite = knightImg && knightImg.complete && knightImg.naturalWidth > 0;
+                const usingSprite = knightImg && knightImg.complete
+                    && knightImg.naturalWidth > 0
+                    // SAFETY: only treat as single-frame when sprite is small
+                    // (large spritesheet would render many frames at once = bug).
+                    && knightImg.naturalWidth <= 96 && knightImg.naturalHeight <= 96;
 
                 if (usingSprite) {
                     const alpha0 = (this.isInvincible && Math.floor(this.invincibleTimer / 4) % 2 === 0) ? 0.5 : 1;
                     ctx.globalAlpha = alpha0;
-                    const targetW = this.width + 14;
-                    const targetH = this.height + 14;
                     const cx = this.x + this.width / 2;
-                    const cy = this.y + this.height / 2;
-                    // Sprite is 13x18, scaled up
-                    const scale = Math.min(targetW / knightImg.naturalWidth, targetH / knightImg.naturalHeight) * 4;
-                    const dw = knightImg.naturalWidth * scale * 1.5;
-                    const dh = knightImg.naturalHeight * scale * 1.5;
-                    ctx.imageSmoothingEnabled = false;  // pixel art crispness
-                    // Shadow underneath
-                    ctx.shadowBlur = 18;
+                    // Use the knight's content bbox (approx 26x30 inside the 32x32 sheet).
+                    // Render at 2.5x to keep the sprite prominent but not gigantic.
+                    const renderScale = 2.5;
+                    const dw = knightImg.naturalWidth * renderScale;   // 80
+                    const dh = knightImg.naturalHeight * renderScale;  // 80
+                    // Place the sprite so its feet are near the player's bottom.
+                    const drawX = cx - dw / 2;
+                    const drawY = this.y + this.height - dh;
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.shadowBlur = 16;
                     ctx.shadowColor = this.hasShield ? '#00FFFF' : (this.hasSpeed ? '#FFE66D' : '#FF3333');
                     if (this.faceDir === -1) {
                         ctx.save();
                         ctx.translate(cx, 0);
                         ctx.scale(-1, 1);
-                        ctx.drawImage(knightImg, -dw / 2, cy - dh / 2, dw, dh);
+                        ctx.drawImage(knightImg, -dw / 2, drawY, dw, dh);
                         ctx.restore();
                     } else {
-                        ctx.drawImage(knightImg, cx - dw / 2, cy - dh / 2, dw, dh);
+                        ctx.drawImage(knightImg, drawX, drawY, dw, dh);
                     }
                     ctx.shadowBlur = 0;
                     ctx.globalAlpha = 1;
@@ -2989,8 +2993,7 @@
                     'tex_metal': 'assets/metal_plate.png',
                     'tex_rockface': 'assets/rockface_grey.png',
                     // Character sprites
-                    'char_knight': 'assets/dark_knight.png',
-                    'char_dracovir': 'assets/dracovir.png',
+                    'char_knight': 'assets/char_knight.png',
                 };
                 const keys = Object.keys(manifest);
                 let loadedCount = 0;
